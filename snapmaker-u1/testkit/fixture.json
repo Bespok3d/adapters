@@ -1,0 +1,36 @@
+{
+  "$comment": "In-vitro test fixture for the Snapmaker U1 adapter. The adapter OWNS its fake device: this file plus `skeleton/` (a verbatim seed tree) plus ../jinni/paths.json fully define the device the generic runner stands up; the harness and test specs know nothing U1-specific. Placeholders ($BESPOK3D, $KLIPPER_EXTRAS, ...) resolve against paths.json so paths are declared once. `skeleton.dirs`/`skeleton.files` are for empty dirs and tiny inline content; `skeleton.seed` names a directory mirroring the device root, docker-cp'd in verbatim, for real captured files (boot scripts, factory configs). The seed files here were captured from a U1 firmware rootfs and SANITIZED to read as STOCK (Bespok3d targets stock; the enroll preflight refuses Extended firmware): no /usr/local/bin/extended-config.py, the [include extended/...] line stripped from moonraker.conf, FULLVERSION pinned to a stock value. Re-seed from a real stock capture when hardware is available and treat any in-vitro/on-device divergence as a bug in this fixture.",
+  "ssh": { "user": "root", "password": "test-root", "port": 2222 },
+  "baseImage": "bespok3d/fake-printer-base",
+  "daemonVenvDir": "$BESPOK3D/venv",
+  "skeleton": {
+    "seed": "skeleton",
+    "dirs": [
+      "/home/lava/klipper/klippy/extras",
+      "/home/lava/moonraker/moonraker/components",
+      "/oem/printer_data/config",
+      "/var/db",
+      "/etc/init.d"
+    ],
+    "files": [
+      { "path": "/etc/FULLVERSION", "content": "1.4.0.246" }
+    ]
+  },
+  "services": {
+    "moonraker": { "stub": true, "port": 7125, "info": { "klippy_state": "ready" }, "printState": "standby" },
+    "klipper": { "stub": true }
+  },
+  "postEnroll": {
+    "dirs": [
+      "$BESPOK3D/bin",
+      "$BESPOK3D/etc/daemon",
+      "$BESPOK3D/var/lib/daemon",
+      "$BESPOK3D/auth"
+    ],
+    "files": [
+      "$BESPOK3D/etc/daemon/server.crt",
+      "$BESPOK3D/auth/acl.json",
+      "/etc/init.d/S99bespok3d"
+    ]
+  }
+}

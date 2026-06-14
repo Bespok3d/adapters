@@ -1,0 +1,18 @@
+{
+  "BESPOK3D": "/userdata/bespok3d",
+  "BESPOK3D_PLUGINS": "/userdata/bespok3d/usr/local/plugins",
+  "BESPOK3D_KLIPPER": "/oem/printer_data/config/bespok3d/klipper",
+  "BESPOK3D_MOONRAKER": "/oem/printer_data/config/bespok3d/moonraker",
+  "PRINTER_DATA": "/oem/printer_data",
+  "KLIPPER_SRC": "/home/lava/klipper/klippy",
+  "KLIPPER_EXTRAS": "/home/lava/klipper/klippy/extras",
+  "MOONRAKER_COMPONENTS": "/home/lava/moonraker/moonraker/components",
+  "PRINTER_CFG": "/oem/printer_data/config/printer.cfg",
+  "MOONRAKER_CFG": "/oem/printer_data/config/moonraker.conf",
+  "PYTHON_SITE_PACKAGES": "/usr/lib/python3.11/site-packages",
+  "KLIPPER_LOG": "/oem/printer_data/logs/klippy.log",
+  "MOONRAKER_LOG": "/oem/printer_data/logs/moonraker.log",
+  "KLIPPER_UDS": "/home/lava/printer_data/comms/klippy.sock",
+  "MOONRAKER_UDS": "/home/lava/printer_data/comms/moonraker.sock",
+  "RUNTIME_USER": "lava"
+}

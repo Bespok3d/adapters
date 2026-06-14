@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# Start/stop lmd process
+#
+
+PROG=/usr/bin/lmd
+
+case "$1" in
+    start)
+        ulimit -c 102400
+        start-stop-daemon -S -b -x "$PROG"
+        ;;
+    stop)
+        start-stop-daemon -K -x "$PROG" -o
+        ;;
+    restart)
+        "$0" stop
+        sleep 10
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+esac
