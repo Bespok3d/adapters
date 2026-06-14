@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from jinni import KlipperPrinterJinni
+from jinni.contracts import ControlScript, ServiceActionVocabulary
 
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
 # client at enrollment; it deploys to the device with the rest of this jinni dir.
@@ -24,6 +25,15 @@ WLAN_IFACE = "wlan0"
 WATCHDOG_INTERVAL_S = 30
 _FIRMWARE_TIMEOUT_S = 3
 JINNI_VERSION = "0.1.1"
+
+# The U1's core-service restart commands, keyed by the generic hook a manifest declares. These are
+# the device facts the daemon must not name itself; it asks the jinni via restart_command().
+_RESTART_COMMANDS = {
+    "klipper": "/etc/init.d/S60klipper restart",
+    "moonraker": "/etc/init.d/S61moonraker restart",
+    "web": "/usr/sbin/nginx -s reload",
+    "lmd": "$BESPOK3D/etc/init.d/lmdctl restart",
+}
 
 # The managed-service init script is a real, editable shell file next to this jinni; the jinni
 # fills its __SENTINELS__ per service. To change the script, edit service.sh, not a python string.
@@ -93,6 +103,14 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
     def capability_flags(self) -> set[str]:
         return {"overlay", "managed-service", "lmd-control"}
 
+    def restart_command(self, hook: str) -> str | None:
+        return _RESTART_COMMANDS.get(hook)
+
+    def service_action_vocabulary(self) -> ServiceActionVocabulary:
+        return ServiceActionVocabulary(
+            display_services=("lmdctl",), service_markers=("init.d", "nginx")
+        )
+
     def render_service_script(self, service: dict, paths: dict[str, str]) -> str:
         name = service["name"]
         data_root = paths["BESPOK3D"]
@@ -105,8 +123,10 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
             .replace("__NAME__", name)
         )
 
-    def render_lmd_control_script(self, paths: dict[str, str]) -> str:
-        return _LMD_CONTROL_TEMPLATE.read_text().replace("__BESPOK3D__", paths["BESPOK3D"])
+    def startup_control_scripts(self, paths: dict[str, str]) -> list[ControlScript]:
+        data_root = paths["BESPOK3D"]
+        content = _LMD_CONTROL_TEMPLATE.read_text().replace("__BESPOK3D__", data_root)
+        return [ControlScript(path=f"{data_root}/etc/init.d/lmdctl", content=content, mode=0o755)]
 
     def background_tasks(self) -> list[Coroutine[Any, Any, None]]:
         return [wifi_watchdog()]

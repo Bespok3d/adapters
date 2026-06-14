@@ -38,6 +38,24 @@ def test_capability_flags_advertise_overlay_managed_service_and_lmd_control() ->
     assert SnapmakerU1Jinni().capability_flags() == {"overlay", "managed-service", "lmd-control"}
 
 
+def test_restart_command_maps_each_hook_to_a_u1_command() -> None:
+    u1 = SnapmakerU1Jinni()
+    assert u1.restart_command("klipper") == "/etc/init.d/S60klipper restart"
+    assert u1.restart_command("moonraker") == "/etc/init.d/S61moonraker restart"
+    assert u1.restart_command("web") == "/usr/sbin/nginx -s reload"
+    assert u1.restart_command("lmd") == "$BESPOK3D/etc/init.d/lmdctl restart"
+
+
+def test_restart_command_is_none_for_an_unknown_hook() -> None:
+    assert SnapmakerU1Jinni().restart_command("database") is None
+
+
+def test_service_action_vocabulary_names_the_u1_display_and_service_tokens() -> None:
+    vocabulary = SnapmakerU1Jinni().service_action_vocabulary()
+    assert vocabulary.display_services == ("lmdctl",)
+    assert vocabulary.service_markers == ("init.d", "nginx")
+
+
 def test_hardware_lists_the_u1_devices() -> None:
     assert SnapmakerU1Jinni().hardware() == ["camera-mipi", "rfid-spi", "npu-rknn"]
 
@@ -51,8 +69,13 @@ def test_render_service_script_uses_start_stop_daemon() -> None:
     assert "exec /usr/bin/python3 -u fb.py >>$LOG 2>&1" in script
 
 
-def test_render_lmd_control_script_stops_with_sigkill_never_sigterm() -> None:
-    script = SnapmakerU1Jinni().render_lmd_control_script({"BESPOK3D": "/userdata/bespok3d"})
+def test_startup_control_scripts_render_the_lmdctl_script() -> None:
+    scripts = SnapmakerU1Jinni().startup_control_scripts({"BESPOK3D": "/userdata/bespok3d"})
+    assert len(scripts) == 1
+    lmdctl = scripts[0]
+    assert lmdctl.path == "/userdata/bespok3d/etc/init.d/lmdctl"
+    assert lmdctl.mode == 0o755
+    script = lmdctl.content
     assert script.startswith("#!/bin/sh")
     assert "BESPOK3D=/userdata/bespok3d" in script
     assert "killall -9 unisrv lmd rkaiq_3A_" in script
