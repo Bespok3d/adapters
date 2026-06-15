@@ -1,30 +1,29 @@
 """Snapmaker U1 Jinni: the daemon-side half of the U1 adapter.
 
 Shipped with the adapter and installed next to the daemon, which loads it via `make_jinni()`. It is
-a klipper printer, so it extends `KlipperPrinterJinni` (which carries the klipper path contract and
-the klipper facts: klipper version, moonraker probe, print state) and overrides only what is
-genuinely U1-specific: its paths (from the co-located paths.json, the single source of truth shared
-with the app-side client), hardware, firmware, the SysV init script, and the wifi watchdog.
+a klipper printer, so it extends `KlipperPrinterJinni` (the klipper path contract + facts) and
+overrides only the genuinely U1-specific facts and service vocabulary. The logic-bearing concerns it
+would otherwise mix in live in their own modules next to this one: wifi self-heal (wifi_watchdog),
+service-script rendering (service_scripts), and failure diagnosis (device_health). This class is the
+composition root: it declares the device's facts and wires those concerns to the contract methods.
 """
-import asyncio
 import json
 import subprocess
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
+import service_scripts
+from device_health import diagnose_broker
 from jinni import KlipperPrinterJinni
-from jinni.contracts import ControlScript, ServiceActionVocabulary
+from jinni.contracts import ControlScript, DeviceHealth
+from wifi_watchdog import wifi_watchdog
 
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
 # client at enrollment; it deploys to the device with the rest of this jinni dir.
 _PATHS_FILE = Path(__file__).resolve().parent / "paths.json"
-WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
-WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
-WLAN_IFACE = "wlan0"
-WATCHDOG_INTERVAL_S = 30
 _FIRMWARE_TIMEOUT_S = 3
-JINNI_VERSION = "0.1.1"
+JINNI_VERSION = "0.1.5"
 
 # The U1's core-service restart commands, keyed by the generic hook a manifest declares. These are
 # the device facts the daemon must not name itself; it asks the jinni via restart_command().
@@ -34,46 +33,6 @@ _RESTART_COMMANDS = {
     "web": "/usr/sbin/nginx -s reload",
     "lmd": "$BESPOK3D/etc/init.d/lmdctl restart",
 }
-
-# The managed-service init script is a real, editable shell file next to this jinni; the jinni
-# fills its __SENTINELS__ per service. To change the script, edit service.sh, not a python string.
-_SERVICE_TEMPLATE = Path(__file__).resolve().parent / "service.sh"
-
-# The hardened lmd/unisrv control script (SIGKILL teardown, never SIGTERM). Edit lmd-control.sh,
-# not a python string; the daemon places the rendered result at $BESPOK3D/etc/init.d/lmdctl.
-_LMD_CONTROL_TEMPLATE = Path(__file__).resolve().parent / "lmd-control.sh"
-
-
-def _wlan_exists() -> bool:
-    result = subprocess.run(["ip", "link", "show", WLAN_IFACE], capture_output=True, check=False)
-    return result.returncode == 0
-
-
-def _wlan_has_ip() -> bool:
-    result = subprocess.run(
-        ["ip", "-4", "addr", "show", WLAN_IFACE], capture_output=True, text=True, check=False,
-    )
-    return "inet " in result.stdout
-
-
-def _restore_wifi() -> None:
-    if WIFI_CRED_SRC.exists():
-        src_text = WIFI_CRED_SRC.read_text()
-        if "network=" in src_text:
-            WIFI_CRED_DST.write_text(src_text)
-    subprocess.run(["ifdown", WLAN_IFACE], capture_output=True, check=False)
-    subprocess.run(["ifup", WLAN_IFACE], capture_output=True, check=False)
-
-
-def _check_and_heal() -> None:
-    if _wlan_exists() and not _wlan_has_ip():
-        _restore_wifi()
-
-
-async def wifi_watchdog() -> None:
-    while True:
-        await asyncio.to_thread(_check_and_heal)
-        await asyncio.sleep(WATCHDOG_INTERVAL_S)
 
 
 class SnapmakerU1Jinni(KlipperPrinterJinni):
@@ -106,27 +65,20 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
     def restart_command(self, hook: str) -> str | None:
         return _RESTART_COMMANDS.get(hook)
 
-    def service_action_vocabulary(self) -> ServiceActionVocabulary:
-        return ServiceActionVocabulary(
-            display_services=("lmdctl",), service_markers=("init.d", "nginx")
-        )
+    def deferred_service_markers(self) -> tuple[str, ...]:
+        return ("init.d", "nginx")
 
-    def render_service_script(self, service: dict, paths: dict[str, str]) -> str:
-        name = service["name"]
-        data_root = paths["BESPOK3D"]
-        exec_line = " ".join([service["command"], *service.get("args", [])]).strip()
-        return (
-            _SERVICE_TEMPLATE.read_text()
-            .replace("__PIDFILE__", f"{data_root}/run/{name}.pid")
-            .replace("__LOG__", f"{data_root}/var/log/{name}.log")
-            .replace("__EXEC__", exec_line)
-            .replace("__NAME__", name)
-        )
+    def display_service_tokens(self) -> tuple[str, ...]:
+        return ("lmdctl",)
+
+    def health(self) -> DeviceHealth:
+        return diagnose_broker(super().health(), self.port_listening)
+
+    def render_service_script(self, service: dict[str, Any], paths: dict[str, str]) -> str:
+        return service_scripts.render_service_script(service, paths)
 
     def startup_control_scripts(self, paths: dict[str, str]) -> list[ControlScript]:
-        data_root = paths["BESPOK3D"]
-        content = _LMD_CONTROL_TEMPLATE.read_text().replace("__BESPOK3D__", data_root)
-        return [ControlScript(path=f"{data_root}/etc/init.d/lmdctl", content=content, mode=0o755)]
+        return service_scripts.startup_control_scripts(paths)
 
     def background_tasks(self) -> list[Coroutine[Any, Any, None]]:
         return [wifi_watchdog()]

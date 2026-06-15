@@ -45,7 +45,9 @@ describe('daemonFiles deploy discovery', () => {
   it('discovers the whole daemon module tree, so a new module deploys automatically', () => {
     expect(files).toContain('daemon.py')
     expect(files).toContain('core/intent.py')
-    expect(files).toContain('core/packages.py')
+    // A nested package module: proves discovery walks subpackages (core/packages/ since the refactor
+    // split the old core/packages.py into a package directory).
+    expect(files).toContain('core/packages/installer.py')
   })
 
   it('ships only python modules, skipping tests, the venv, caches, and wheels', () => {
@@ -152,7 +154,9 @@ describe('s10bespok3d-daemon startup script', () => {
 })
 
 describe('isPrinting (preflight print-state parse)', () => {
-  const stats = (state: string) => JSON.stringify({ result: { status: { print_stats: { state } } } })
+  function stats(state: string): string {
+    return JSON.stringify({ result: { status: { print_stats: { state } } } })
+  }
 
   it('treats printing and paused as busy', () => {
     expect(isPrinting(stats('printing'))).toBe(true)
@@ -174,8 +178,9 @@ describe('adapter env vars', () => {
   it('sources path values from the shared paths.json, never a second hardcoded copy', () => {
     const adapter = getAdapter('snapmaker-u1')
     expect(adapter, 'snapmaker-u1 adapter must be registered').toBeTruthy()
-    const valueOf = (name: string): string | undefined =>
-      adapter!.envVars.find((envVar) => envVar.name === name)?.value
+    function valueOf(name: string): string | undefined {
+      return adapter!.envVars.find((envVar) => envVar.name === name)?.value
+    }
     expect(valueOf('KLIPPER_SRC')).toBe(PATHS_JSON.KLIPPER_SRC)
     expect(valueOf('RUNTIME_USER')).toBe(PATHS_JSON.RUNTIME_USER)
     expect(valueOf('BESPOK3D')).toBe(PATHS_JSON.BESPOK3D)
