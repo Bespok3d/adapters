@@ -15,6 +15,18 @@ export function adapterJinniPath(): string {
     : join(app.getAppPath(), '..', '..', '..', 'adapters', 'snapmaker-u1', 'jinni')
 }
 
+// The shared klipper jinni runtime (the `jinni` package: base Jinni, KlipperPrinterJinni, the facets,
+// service.py / __main__.py). It lives in its own repo since the ADR-0037 split, but on the printer it
+// co-locates with the daemon: the device jinni `bespok3d_jinni` imports `from jinni import ...` and the
+// daemon spawns `python -m jinni`, so this package must be deployed next to the daemon (DAEMON_BASE/jinni).
+export function klipperJinniPath(): string {
+  const devOverride = devSourcePath(join('adapters', 'klipper-jinni', 'jinni'))
+  if (devOverride) return devOverride
+  return app.isPackaged
+    ? join(process.resourcesPath, 'adapters', 'klipper-jinni', 'jinni')
+    : join(app.getAppPath(), '..', '..', '..', 'adapters', 'klipper-jinni', 'jinni')
+}
+
 export function daemonSrcPath(): string {
   const devOverride = devSourcePath('daemon')
   if (devOverride) return devOverride

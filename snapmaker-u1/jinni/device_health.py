@@ -6,8 +6,9 @@ is the stock MQTT broker the U1 boots Klipper against.
 """
 from collections.abc import Callable
 
-from jinni.contracts import KLIPPER_SERVICE, DeviceHealth
 from jinni.inspection import MQTT_PORT
+from jinni.klipper_vocab import KLIPPER_SERVICE
+from protocol import DeviceHealth
 
 # The U1 boots Klipper against a stock MQTT broker on 1883; if that broker is down Klipper never
 # comes back, and it is firmware, not a plugin. This token is that device fact's machine code.

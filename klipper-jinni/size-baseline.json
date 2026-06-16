@@ -1,0 +1,5 @@
+{
+  "pyCeiling": 150,
+  "allowlist": {},
+  "_note": "Per-file .py ceiling (150). The ratchet (scripts/size_ratchet.py) governs the jinni runtime (jinni/) and test INFRASTRUCTURE (conftest, fakes); the test SUITES (test_*.py) are out of scope. The allowlist is empty: every governed file is under the ceiling and must stay so. A file over the ceiling fails: split it by concern. Do not allowlist bloat."
+}

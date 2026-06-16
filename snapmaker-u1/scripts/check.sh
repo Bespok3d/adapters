@@ -9,6 +9,7 @@ set -uo pipefail
 ADAPTER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$(cd "$ADAPTER_ROOT/../.." && pwd)"
 DAEMON_DIR="$WORKSPACE/daemon"
+KLIPPER_JINNI_DIR="$WORKSPACE/adapters/klipper-jinni"
 VENV="$DAEMON_DIR/.venv"
 RUFF_CFG="$DAEMON_DIR/pyproject.toml"
 APP_DIR="$WORKSPACE/Bespok3d/src/application"
@@ -36,7 +37,7 @@ run_check "em-dash / en-dash ban" node "$ADAPTER_ROOT/scripts/em-dash-guard.mjs"
 run_check "size ratchet"          node "$ADAPTER_ROOT/scripts/ratchet.mjs"
 
 run_check "ruff (jinni)"   "$VENV/bin/ruff" check --config "$RUFF_CFG" "$JINNI"
-run_check "mypy (jinni)"   env MYPYPATH="$DAEMON_DIR" "$VENV/bin/mypy" --config-file "$RUFF_CFG" \
+run_check "mypy (jinni)"   env MYPYPATH="$DAEMON_DIR:$KLIPPER_JINNI_DIR" "$VENV/bin/mypy" --config-file "$RUFF_CFG" \
     "$JINNI/bespok3d_jinni.py" "$JINNI/device_health.py" "$JINNI/service_scripts.py" "$JINNI/wifi_watchdog.py"
 run_check "pytest (jinni)" "$VENV/bin/pytest" --tb=short -q "$JINNI/tests"
 

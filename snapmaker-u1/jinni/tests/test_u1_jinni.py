@@ -6,12 +6,8 @@ import pytest
 from bespok3d_jinni import SnapmakerU1Jinni, make_jinni
 from device_health import BROKER_DOWN
 from jinni import KlipperPrinterJinni
-from jinni.contracts import (
-    KLIPPER_SERVICE,
-    RESTART_DISPLAY,
-    DeviceHealth,
-    ServiceHealth,
-)
+from jinni.klipper_vocab import KLIPPER_SERVICE, RESTART_DISPLAY
+from protocol import DeviceHealth, ServiceHealth
 
 _PATHS_FILE = Path(bespok3d_jinni.__file__).resolve().parent / "paths.json"
 _EXECUTABLE_MODE = 0o755
@@ -68,8 +64,8 @@ def test_classify_commands_uses_the_u1_display_and_service_tokens() -> None:
         "$BESPOK3D/etc/init.d/lmdctl restart",
         "chown lava:lava /b/spoolman.cfg",
     ])
-    assert klipper.restarts_klipper and klipper.deferrable
-    assert lmd.blocking_token == RESTART_DISPLAY and not lmd.restarts_klipper
+    assert KLIPPER_SERVICE in klipper.restarts_services and klipper.deferrable
+    assert lmd.blocking_token == RESTART_DISPLAY and KLIPPER_SERVICE not in lmd.restarts_services
     assert not config_gen.deferrable
 
 

@@ -7,7 +7,7 @@ script the daemon places at startup. Template-fill only: the scripts are real sh
 from pathlib import Path
 from typing import Any
 
-from jinni.contracts import ControlScript
+from protocol import ControlScript
 
 _SERVICE_TEMPLATE = Path(__file__).resolve().parent / "service.sh"
 _LMD_CONTROL_TEMPLATE = Path(__file__).resolve().parent / "lmd-control.sh"

@@ -1,11 +1,11 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-import { shellQuote } from '@adapter-sdk'
 import type { SshSession, EnrollContext, EnrollStep } from '@adapter-sdk'
 
 import { readAcl, grantedAcl } from './acl'
-import { daemonFiles, jinniFiles, daemonModuleDirs, uploadDaemonFile } from './deploy'
+import { daemonFiles, daemonModuleDirs, uploadDaemonFile } from './deploy'
+import { uploadAdapterJinni } from './jinni-deploy'
 import { OVERLAY_DEBUG_FLAG, writeLayerActive } from './overlay'
 import {
   BESPOK3D,
@@ -13,7 +13,6 @@ import {
   DAEMON_BASE,
   PRINTER_DATA,
   SYSTEM_VERSION_FILE,
-  adapterJinniPath,
   daemonSrcPath,
 } from './paths'
 import { printerIsPrinting } from './print-state'
@@ -170,22 +169,6 @@ idx = content.find(marker)
 open('${PRINTER_DATA}/config/moonraker.conf', 'w').write(content[:idx]+line+content[idx:] if idx>=0 else content+line)
 "`
   )
-}
-
-async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  const jinniSrc = adapterJinniPath()
-  const files = jinniFiles(jinniSrc)
-  const jinniDirs = daemonModuleDirs(files).map((dir) => `${DAEMON_BASE}/${dir}`)
-  if (jinniDirs.length > 0) await ssh.exec(`mkdir -p ${jinniDirs.map(shellQuote).join(' ')}`)
-
-  async function uploadFromIndex(index: number): Promise<void> {
-    if (index >= files.length) return
-    ctx.onProgress?.(`Uploading adapter jinni… ${index + 1}/${files.length}`)
-    await uploadDaemonFile(ssh, jinniSrc, files[index])
-    return uploadFromIndex(index + 1)
-  }
-
-  await uploadFromIndex(0)
 }
 
 async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, src: string): Promise<void> {

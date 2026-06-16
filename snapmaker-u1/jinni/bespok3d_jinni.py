@@ -16,14 +16,14 @@ from typing import Any
 import service_scripts
 from device_health import diagnose_broker
 from jinni import KlipperPrinterJinni
-from jinni.contracts import ControlScript, DeviceHealth
+from protocol import ControlScript, DeviceHealth
 from wifi_watchdog import wifi_watchdog
 
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
 # client at enrollment; it deploys to the device with the rest of this jinni dir.
 _PATHS_FILE = Path(__file__).resolve().parent / "paths.json"
 _FIRMWARE_TIMEOUT_S = 3
-JINNI_VERSION = "0.1.5"
+JINNI_VERSION = "0.1.6"
 
 # The U1's core-service restart commands, keyed by the generic hook a manifest declares. These are
 # the device facts the daemon must not name itself; it asks the jinni via restart_command().

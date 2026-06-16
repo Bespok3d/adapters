@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# Same guardrail as the daemon: a hung test (a websocket/socket read that never arrives) fails fast
+# with a stack dump instead of stalling the gate.
+timeout = 60
+timeout_method = "thread"

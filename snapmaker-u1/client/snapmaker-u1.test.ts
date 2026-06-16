@@ -57,6 +57,27 @@ describe('daemonFiles deploy discovery', () => {
   })
 })
 
+describe('klipper jinni runtime deploy discovery (ADR-0037)', () => {
+  // The shared `jinni` package lives in its own repo since the split, but the daemon spawns
+  // `python -m jinni` and the device jinni imports `from jinni import ...`, so it MUST deploy next to
+  // the daemon. This guards that the whole runtime (service entrypoint + tiers + comms) is discovered.
+  const KLIPPER_JINNI_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../klipper-jinni/jinni')
+  const files = daemonFiles(KLIPPER_JINNI_DIR)
+
+  it('discovers the jinni service entrypoint, the tiers, and the printer-comms subpackage', () => {
+    expect(files).toContain('__main__.py')
+    expect(files).toContain('service.py')
+    expect(files).toContain('base.py')
+    expect(files).toContain('klipper.py')
+    expect(files).toContain('printer_comms/klippy.py')
+  })
+
+  it('ships only python modules, skipping tests and caches', () => {
+    expect(files.every((file) => file.endsWith('.py'))).toBe(true)
+    expect(files.some((file) => file.startsWith('tests/'))).toBe(false)
+  })
+})
+
 describe('writeLayerActive (the /oem/.debug overlay flag)', () => {
   it('is true when /oem/.debug is present', async () => {
     expect(await writeLayerActive(fakeSsh(() => 'yes\n'))).toBe(true)

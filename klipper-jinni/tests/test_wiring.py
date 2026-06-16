@@ -1,0 +1,79 @@
+"""The wiring facet (ADR-0037): the jinni symlinks placed files into the system, preserves any stock
+original so teardown restores the firmware exactly, and records each reversion as data.
+
+The daemon resolves where a file belongs; creating, backing up, and removing the device symlink is
+the jinni's actuation. These guard the stock-original backup/restore contract and the declarative
+reversion record the off-host escape hatch replays.
+"""
+import json
+from pathlib import Path
+
+from jinni.wiring import Wiring
+
+
+def _wire(plugin_dir: Path, source: Path, destination: Path) -> list:
+    link = {"source": str(source), "destination": str(destination)}
+    return Wiring().wire(str(plugin_dir), [link])
+
+
+def test_wire_backs_up_a_stock_original_and_unwire_restores_it(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin"
+    source = plugin_dir / "files" / "new.cfg"
+    source.parent.mkdir(parents=True)
+    source.write_text("plugin version\n")
+    destination = tmp_path / "etc" / "thing.cfg"
+    destination.parent.mkdir()
+    destination.write_text("stock version\n")
+
+    outcomes = _wire(plugin_dir, source, destination)
+
+    assert outcomes[0].ok
+    assert destination.is_symlink()
+    assert destination.read_text() == "plugin version\n"
+
+    Wiring().unwire(str(plugin_dir), [str(destination)])
+    assert not destination.is_symlink()
+    assert destination.read_text() == "stock version\n"
+
+
+def test_wire_over_an_existing_symlink_does_not_capture_it_as_a_backup(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    source = tmp_path / "source"
+    source.write_text("ours\n")
+    destination = tmp_path / "link"
+    destination.symlink_to(tmp_path / "elsewhere")
+
+    _wire(plugin_dir, source, destination)
+
+    backup_dir = plugin_dir / "symlink_orig"
+    assert not backup_dir.exists() or not any(backup_dir.iterdir())
+
+
+def test_wire_records_a_replayable_reversion(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin"
+    source = plugin_dir / "src.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("x = 1\n")
+    destination = tmp_path / "extras" / "src.py"
+
+    _wire(plugin_dir, source, destination)
+
+    record = json.loads((plugin_dir / "wiring.json").read_text())
+    assert record["reversions"] == [{"action": "unlink", "path": str(destination)}]
+
+
+def test_a_second_wire_accumulates_into_the_record(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    first_src, second_src = tmp_path / "a", tmp_path / "b"
+    first_src.write_text("a")
+    second_src.write_text("b")
+    first_dest, second_dest = tmp_path / "da", tmp_path / "db"
+
+    _wire(plugin_dir, first_src, first_dest)
+    _wire(plugin_dir, second_src, second_dest)
+
+    record = json.loads((plugin_dir / "wiring.json").read_text())
+    paths = {reversion["path"] for reversion in record["reversions"]}
+    assert paths == {str(first_dest), str(second_dest)}
