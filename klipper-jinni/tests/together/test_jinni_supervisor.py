@@ -11,8 +11,9 @@ import tempfile
 import time
 from collections.abc import Iterator
 
-import protocol
 import pytest
+
+import protocol
 from core import jinni_client
 from core.jinni_client import supervisor, transport
 from protocol import DeviceHealth

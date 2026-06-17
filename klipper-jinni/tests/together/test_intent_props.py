@@ -1,7 +1,8 @@
 import pytest
-from core import intent
 from hypothesis import given
 from hypothesis import strategies as st
+
+from core import intent
 from jinni.realization import _BESPOK3D_PLACEMENTS, _KLIPPER_PLACEMENTS
 
 _PLACEMENT_CLASSES = sorted({*_BESPOK3D_PLACEMENTS, *_KLIPPER_PLACEMENTS})

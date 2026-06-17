@@ -12,6 +12,7 @@ from email.message import Message
 from typing import NoReturn
 
 import pytest
+
 from jinni.base import Jinni
 from jinni.klipper import KLIPPER_PATH_KEYS, KlipperPrinterJinni
 from jinni.klipper_vocab import RESTART_KLIPPER, RESTART_MOONRAKER

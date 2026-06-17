@@ -5,6 +5,7 @@ capability flags, hardware, version, and so on. The daemon's assembly of these i
 `CapabilitiesResponse` over the seam is the daemon's concern, covered there (tests/api).
 """
 import pytest
+
 from jinni import KlipperPrinterJinni
 from jinni.loader import GenericJinni
 

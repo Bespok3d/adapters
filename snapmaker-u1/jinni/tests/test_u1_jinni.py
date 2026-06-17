@@ -5,6 +5,7 @@ import bespok3d_jinni
 import pytest
 from bespok3d_jinni import SnapmakerU1Jinni, make_jinni
 from device_health import BROKER_DOWN
+
 from jinni import KlipperPrinterJinni
 from jinni.klipper_vocab import KLIPPER_SERVICE, RESTART_DISPLAY
 from protocol import DeviceHealth, ServiceHealth

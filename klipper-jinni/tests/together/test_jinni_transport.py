@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 import pytest
+
 from core import jinni_client
 from core.jinni_client import transport
 from jinni import service

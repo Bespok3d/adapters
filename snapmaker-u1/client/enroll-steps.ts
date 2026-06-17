@@ -331,7 +331,7 @@ export const ENROLL_STEPS: EnrollStep[] = [
     id: 'deploy-daemon',
     label: 'Deploying the bespok3d daemon',
     detail:
-      'Uploads the daemon Python source to /userdata/bespok3d/var/lib/daemon/ and installs pgpy in the Moonraker Python environment for package signature verification.',
+      'Uploads the daemon Python source and the device adapter (jinni) to /userdata/bespok3d/var/lib/daemon/, then provisions the daemon its own isolated Python virtualenv at /userdata/bespok3d/venv with its packages from pre-built wheels. The Moonraker, Klipper, and system Python are never touched.',
     run: (ssh, ctx) => stepDeployDaemon(ssh, ctx),
   },
   {

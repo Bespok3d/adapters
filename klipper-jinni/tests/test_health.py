@@ -13,6 +13,7 @@ from email.message import Message
 from typing import NoReturn
 
 import pytest
+
 from jinni import health, inspection
 from jinni.health import MoonrakerInfo
 from jinni.klipper import KLIPPER_PATH_KEYS, KlipperPrinterJinni

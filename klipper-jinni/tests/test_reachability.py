@@ -11,8 +11,9 @@ import urllib.request
 from email.message import Message
 from typing import NoReturn
 
-import jinni
 import pytest
+
+import jinni
 
 
 class _ReachableJinni(jinni.Jinni):

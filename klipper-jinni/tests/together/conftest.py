@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 import pytest
+
 from core import jinni_client
 from jinni.klipper import KlipperPrinterJinni
 

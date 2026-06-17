@@ -6,6 +6,7 @@ import tempfile
 from collections.abc import Iterator
 
 import pytest
+
 from jinni.printer_comms import klippy_subscribe
 from protocol.frame import ETX
 

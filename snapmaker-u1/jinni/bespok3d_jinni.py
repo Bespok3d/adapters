@@ -15,9 +15,10 @@ from typing import Any
 
 import service_scripts
 from device_health import diagnose_broker
+from wifi_watchdog import wifi_watchdog
+
 from jinni import KlipperPrinterJinni
 from protocol import ControlScript, DeviceHealth
-from wifi_watchdog import wifi_watchdog
 
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
 # client at enrollment; it deploys to the device with the rest of this jinni dir.

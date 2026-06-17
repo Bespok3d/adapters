@@ -1,5 +1,6 @@
-import jinni
 import pytest
+
+import jinni
 from jinni.loader import GenericJinni, _verify_contract, get_jinni
 
 MP = pytest.MonkeyPatch

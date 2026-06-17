@@ -10,8 +10,9 @@ import shutil
 import tempfile
 from collections.abc import AsyncIterator, Iterator
 
-import protocol
 import pytest
+
+import protocol
 from jinni import service
 from jinni.klipper import KLIPPER_PATH_KEYS, KlipperPrinterJinni
 from jinni.klipper_vocab import (
@@ -95,6 +96,21 @@ async def test_primitive_verbs_round_trip(socket_path: str) -> None:
         assert await call("capability_flags", []) == {"overlay", "managed-service"}
 
 
+async def test_a_request_past_the_default_buffer_still_replies(socket_path: str) -> None:
+    # Regression: the write_files verb carries whole device files (a patched Klipper source, several
+    # at once on a restore). A request frame past asyncio's 64 KiB default StreamReader cap overran
+    # readuntil with LimitOverrunError, which handle swallowed by closing the connection unanswered
+    # ("no reply from the jinni for write_files"). The server lifts the cap, so a large request now
+    # round-trips. classify_commands exercises the same readuntil path before any verb dispatch.
+    server = await service.serve(socket_path, _FakeJinni())
+    oversized = "x" * (128 * 1024)
+    async with server:
+        effects = await asyncio.to_thread(
+            protocol.call, socket_path, "classify_commands", [[oversized]],
+        )
+    assert effects == [CommandEffect(True, (KLIPPER_SERVICE,), RESTART_KLIPPER)]
+
+
 async def test_blocked_actions_stream_pushes_each_change_over_the_socket(socket_path: str) -> None:
     server = await service.serve(socket_path, _FakeJinni())
     async with server:
@@ -103,6 +119,33 @@ async def test_blocked_actions_stream_pushes_each_change_over_the_socket(socket_
             async for tokens in protocol.stream(socket_path, protocol.SUBSCRIBE_BLOCKED_ACTIONS)
         ]
     assert frames == [frozenset({RESTART_KLIPPER, RESTART_MOONRAKER}), frozenset()]
+
+
+class _BlockingWatchJinni(_FakeJinni):
+    """Its watch awaits forever after the first push, like the real one awaiting Klipper's next
+    state. Dropping the subscribe connection mid-await must tear the stream down cleanly."""
+
+    async def watch_blocked_actions(self) -> AsyncIterator[frozenset[str]]:
+        yield frozenset({RESTART_KLIPPER})
+        await asyncio.Event().wait()
+        yield frozenset()  # never reached; satisfies the generator type
+
+
+async def test_a_mid_stream_disconnect_does_not_wedge_the_jinni(socket_path: str) -> None:
+    # Regression: the daemon dropping the subscribe connection while the jinni is mid-await (between
+    # state changes) used to tear the watch generator down with an external aclose mid-run
+    # ("asynchronous generator is already running"), crashing the loop so verbs got no reply. After
+    # the disconnect the jinni must still answer a fresh verb call.
+    server = await service.serve(socket_path, _BlockingWatchJinni())
+    async with server:
+        reader, writer = await asyncio.open_unix_connection(socket_path)
+        writer.write(protocol.request_bytes(protocol.SUBSCRIBE_BLOCKED_ACTIONS, []))
+        await writer.drain()
+        await reader.readuntil(frame.ETX)
+        writer.close()
+        await asyncio.sleep(0.05)
+        report = await asyncio.to_thread(protocol.call, socket_path, "health", [])
+    assert isinstance(report, DeviceHealth)
 
 
 async def test_handshake_reports_protocol_and_jinni_versions(socket_path: str) -> None:

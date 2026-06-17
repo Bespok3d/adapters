@@ -63,6 +63,27 @@ def test_wire_records_a_replayable_reversion(tmp_path: Path) -> None:
     assert record["reversions"] == [{"action": "unlink", "path": str(destination)}]
 
 
+def test_re_wiring_a_directory_does_not_create_a_nested_self_link(tmp_path: Path) -> None:
+    """A directory placed by symlink (spoolman's spoolman_support_macros) must wire idempotently.
+    The shell `ln -sf` an older install used dereferenced an existing directory symlink and wrote a
+    self-link INSIDE the target (target/target -> target), a cycle Moonraker's file_manager tripped
+    on ("Inotify watch already exists ... roots overlap"). Wiring clears the old symlink first, so a
+    reinstall leaves exactly one link and the target stays clean."""
+    plugin_dir = tmp_path / "plugin"
+    macros = plugin_dir / "files" / "spoolman_support_macros"
+    macros.mkdir(parents=True)
+    (macros / "base_tools.cfg").write_text("x")
+    destination = tmp_path / "config" / "bespok3d" / "klipper" / "spoolman_support_macros"
+
+    _wire(plugin_dir, macros, destination)
+    outcomes = _wire(plugin_dir, macros, destination)
+
+    assert outcomes[0].ok
+    assert destination.is_symlink()
+    assert destination.resolve() == macros.resolve()
+    assert [child.name for child in macros.iterdir()] == ["base_tools.cfg"]
+
+
 def test_a_second_wire_accumulates_into_the_record(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()

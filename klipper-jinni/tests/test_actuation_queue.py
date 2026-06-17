@@ -13,8 +13,9 @@ import threading
 import time
 from collections.abc import Iterator
 
-import protocol
 import pytest
+
+import protocol
 from jinni import service
 from jinni.klipper import KLIPPER_PATH_KEYS, KlipperPrinterJinni
 from jinni.klipper_vocab import KLIPPER_SERVICE

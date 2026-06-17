@@ -26,6 +26,7 @@ from protocol import (
 
 from . import interface_extras
 from .loader import get_jinni
+from .stream import serve_stream
 
 _READ_TIMEOUT_S = 5.0
 
@@ -78,17 +79,6 @@ def _requested_verb(raw: bytes) -> str | None:
         return None
 
 
-async def _stream_blocked_actions(writer: asyncio.StreamWriter, jinni: Any) -> None:
-    """Push the blocked-action token set to the daemon whenever it changes, until the daemon closes
-    the connection (its drain raises, ending the stream). One persistent subscription per client."""
-    try:
-        async for blocked in jinni.watch_blocked_actions():
-            writer.write(result_bytes(sorted(blocked)))
-            await writer.drain()
-    except (ConnectionResetError, BrokenPipeError):
-        pass
-
-
 async def _reply(jinni: Any, raw: bytes, verb: str | None) -> bytes:
     """An actuation verb serializes through the queue and runs off the event loop so a long restart
     never blocks the concurrent reads or the blocked-action stream; a read answers inline."""
@@ -106,7 +96,7 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, jin
         return
     verb = _requested_verb(raw)
     if verb == SUBSCRIBE_BLOCKED_ACTIONS:
-        await _stream_blocked_actions(writer, jinni)
+        await serve_stream(reader, writer, jinni)
         writer.close()
         return
     writer.write(await _reply(jinni, raw, verb))
@@ -115,8 +105,12 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, jin
 
 
 async def serve(socket_path: str, jinni: Any) -> asyncio.AbstractServer:
+    # limit lifts the StreamReader buffer cap above asyncio's 64 KiB default: a write_files request
+    # carries whole device files (a patched Klipper source, several at once on a restore), which
+    # overran readuntil with LimitOverrunError, dropping the reply ("no reply for write_files").
     return await asyncio.start_unix_server(
-        lambda reader, writer: handle(reader, writer, jinni), path=socket_path,
+        lambda reader, writer: handle(reader, writer, jinni),
+        path=socket_path, limit=frame.MAX_FRAME_BYTES,
     )
 
 
