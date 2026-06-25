@@ -23,8 +23,10 @@ from protocol import ControlScript, DeviceHealth
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
 # client at enrollment; it deploys to the device with the rest of this jinni dir.
 _PATHS_FILE = Path(__file__).resolve().parent / "paths.json"
+# Likewise the single source of truth for this jinni's version: read here at runtime AND by the
+# app-side client, so the device half and the app can never report different versions.
+_VERSION_FILE = Path(__file__).resolve().parent / "version.json"
 _FIRMWARE_TIMEOUT_S = 3
-JINNI_VERSION = "0.1.6"
 
 # The U1's core-service restart commands, keyed by the generic hook a manifest declares. These are
 # the device facts the daemon must not name itself; it asks the jinni via restart_command().
@@ -58,7 +60,8 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
             return "unknown"
 
     def version(self) -> str:
-        return JINNI_VERSION
+        data: dict[str, str] = json.loads(_VERSION_FILE.read_text())
+        return data["jinni_version"]
 
     def capability_flags(self) -> set[str]:
         return {"overlay", "managed-service", "lmd-control"}

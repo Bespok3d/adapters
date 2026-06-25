@@ -11,6 +11,7 @@ from jinni.klipper_vocab import KLIPPER_SERVICE, RESTART_DISPLAY
 from protocol import DeviceHealth, ServiceHealth
 
 _PATHS_FILE = Path(bespok3d_jinni.__file__).resolve().parent / "paths.json"
+_VERSION_FILE = Path(bespok3d_jinni.__file__).resolve().parent / "version.json"
 _EXECUTABLE_MODE = 0o755
 
 
@@ -31,6 +32,14 @@ def test_paths_expose_the_u1_klipper_layout() -> None:
 
 def test_paths_come_from_the_shared_paths_json() -> None:
     assert SnapmakerU1Jinni().paths() == json.loads(_PATHS_FILE.read_text())
+
+
+def test_version_comes_from_the_shared_version_json() -> None:
+    assert make_jinni().version() == json.loads(_VERSION_FILE.read_text())["jinni_version"]
+
+
+def test_version_is_not_a_module_constant() -> None:
+    assert not hasattr(bespok3d_jinni, "JINNI_VERSION")
 
 
 def test_paths_expose_site_packages_and_service_logs() -> None:

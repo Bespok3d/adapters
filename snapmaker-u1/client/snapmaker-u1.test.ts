@@ -28,6 +28,10 @@ const PATHS_JSON = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../jinni/paths.json'), 'utf-8')
 )
 
+const VERSION_JSON = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../jinni/version.json'), 'utf-8')
+)
+
 const DAEMON_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../daemon')
 
 const DAEMON_STARTUP_SCRIPT = readFileSync(
@@ -206,5 +210,11 @@ describe('adapter env vars', () => {
     expect(valueOf('RUNTIME_USER')).toBe(PATHS_JSON.RUNTIME_USER)
     expect(valueOf('BESPOK3D')).toBe(PATHS_JSON.BESPOK3D)
     expect(valueOf('MOONRAKER_COMPONENTS')).toBe(PATHS_JSON.MOONRAKER_COMPONENTS)
+  })
+})
+
+describe('adapter jinni version', () => {
+  it('sources the jinni version from the shared version.json, never a second hardcoded copy', () => {
+    expect(getAdapter('snapmaker-u1')?.jinniVersion).toBe(VERSION_JSON.jinni_version)
   })
 })
