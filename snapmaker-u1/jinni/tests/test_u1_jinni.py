@@ -135,3 +135,9 @@ def test_startup_control_scripts_render_the_lmdctl_script() -> None:
     # start delegates to the camera while its capture owns lmd, else starts plain lmd
     assert "s65camera-hw" in script
     assert "start-stop-daemon -S" in script
+    # restart re-bounces a bounded number of times if the display does not come back healthy, so an
+    # intermittent VOP2 wedge during a multi-install does not leave the screen black until reboot
+    assert "RESTART_TRIES=3" in script
+    assert "do_restart()" in script
+    assert "restart) do_restart" in script
+    assert "re-bouncing" in script

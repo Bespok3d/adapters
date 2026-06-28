@@ -11,6 +11,11 @@ DPI_STATE=/sys/class/drm/card0/card0-DPI-1/enabled
 FB_BLANK=/sys/class/graphics/fb0/blank
 STOP_POLL_TRIES=6
 VERIFY_POLL_TRIES=5
+# A restart re-bounces the compositor up to this many times if the display does not come back healthy.
+# unisrv can die or fail to come up on a single bounce (the racy VOP2 path), and a fresh stop+start
+# re-runs the modeset, so a bounded retry clears the intermittent wedge a multi-install can hit instead
+# of leaving the screen black until a reboot.
+RESTART_TRIES=3
 CAMERA_HW=$BESPOK3D/etc/init.d/autostart/s65camera-hw
 CAMERA_PID=$RUN/capture-mipi-mpp.pid
 
@@ -87,12 +92,32 @@ do_status() {
     fi
 }
 
+# Bounce the compositor and confirm it came back, re-bouncing a bounded number of times if it did not.
+# One stop+start usually succeeds, but the VOP2 path is racy: unisrv can die or fail to start, leaving a
+# black screen until reboot. A fresh bounce re-runs the modeset and clears that, so we retry rather than
+# leave the printer's screen dead; if every attempt fails we report it (non-zero) instead of looping.
+do_restart() {
+    attempt=1
+    while [ "$attempt" -le "$RESTART_TRIES" ]; do
+        do_stop
+        do_start
+        do_rearm
+        if do_verify; then
+            return 0
+        fi
+        echo "lmdctl restart: display not healthy after attempt $attempt; re-bouncing" >&2
+        attempt=$((attempt + 1))
+    done
+    echo "lmdctl restart: display did not recover after $RESTART_TRIES attempts" >&2
+    return 1
+}
+
 case "$1" in
     stop)    do_stop ;;
     start)   do_start ;;
     rearm)   do_rearm ;;
     verify)  do_verify ;;
     status)  do_status ;;
-    restart) do_stop; do_start; do_rearm; do_verify ;;
+    restart) do_restart ;;
     *)       echo "Usage: $0 {stop|start|restart|verify|rearm|status}"; exit 1 ;;
 esac
