@@ -124,7 +124,7 @@ def test_variant_facts_report_the_u1_selection_dimensions() -> None:
     assert facts["adapter"] == "snapmaker-u1"
     assert facts["arch"] == "aarch64"
     assert set(facts) == {
-        "adapter", "firmware_version", "arch", "board_class", "kernel_release"
+        "adapter", "firmware_version", "arch", "board_class", "kernel_release", "vermagic"
     }
 
 
@@ -142,6 +142,23 @@ def test_kernel_release_is_unknown_when_uname_fails(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(bespok3d_jinni.subprocess, "run", boom)
     assert SnapmakerU1Jinni().kernel_release() == "unknown"
+
+
+def test_kernel_vermagic_reads_a_loaded_module_via_modinfo(monkeypatch: pytest.MonkeyPatch) -> None:
+    magic = "6.1.99 SMP preempt mod_unload aarch64"
+    monkeypatch.setattr(bespok3d_jinni.kernel_facts, "running_vermagic", lambda: magic)
+    assert SnapmakerU1Jinni().kernel_vermagic() == magic
+
+
+def test_kernel_capability_fact_derives_release_from_the_version_magic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        bespok3d_jinni.kernel_facts, "running_vermagic",
+        lambda: "6.1.99 SMP preempt mod_unload aarch64",
+    )
+    kernel = SnapmakerU1Jinni().capabilities()["kernel"]
+    assert kernel == {"release": "6.1.99", "vermagic": "6.1.99 SMP preempt mod_unload aarch64"}
 
 
 def test_render_service_script_uses_start_stop_daemon() -> None:

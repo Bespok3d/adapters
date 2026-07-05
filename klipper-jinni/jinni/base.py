@@ -65,11 +65,20 @@ class Jinni(Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Fa
             "firmware_version": self.firmware_version(),
             "arch": self.arch(),
             "board_class": self.board_class(),
+            "kernel": self._kernel_facts(),
             "jinni_version": self.version(),
             "capability_flags": sorted(self.capability_flags()),
             "preferred_registries": self.preferred_registries(),
             "endpoints": self.inspect()["endpoints"],
         }
+
+    def _kernel_facts(self) -> dict[str, str]:
+        """The running kernel's identity from modinfo (release + version magic), the ground truth a
+        kernel-module plugin builds against. The release is the first field of the magic, so both
+        come from the one authoritative read; 'unknown' when the box reports no magic."""
+        vermagic = self.kernel_vermagic()
+        release = vermagic.split()[0] if vermagic and vermagic != "unknown" else "unknown"
+        return {"release": release, "vermagic": vermagic}
 
     def variant_facts(self) -> dict[str, str]:
         """The facts the variant engine matches a manifest's `when` against, kept apart from the
@@ -80,4 +89,5 @@ class Jinni(Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Fa
             "arch": self.arch(),
             "board_class": self.board_class(),
             "kernel_release": self.kernel_release(),
+            "vermagic": self.kernel_vermagic(),
         }

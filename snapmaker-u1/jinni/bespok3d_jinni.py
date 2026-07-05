@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import board
+import kernel_facts
 import module_scripts
 import service_scripts
 from device_health import diagnose_broker
@@ -65,6 +66,9 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
             return result.stdout.strip() or "unknown"
         except Exception:
             return "unknown"
+
+    def kernel_vermagic(self) -> str:
+        return kernel_facts.running_vermagic()
 
     def firmware_version(self) -> str:
         try:

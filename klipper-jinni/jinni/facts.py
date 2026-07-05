@@ -33,6 +33,15 @@ class Facts:
         placed. Unknown on a generic box a device jinni has not taught."""
         return "unknown"
 
+    def kernel_vermagic(self) -> str:
+        """The running kernel's version magic (`6.1.99 SMP preempt mod_unload aarch64`), read from a
+        loaded module via `modinfo`: the exact string the kernel checks at insmod, richer than the
+        release alone (it carries the ABI-affecting config flags). Read from ground truth, never
+        synthesized from `/proc/version`. The finer variant dimension a `.ko` selects on, and the
+        reference the load-failure classifier compares a stale module against. Unknown on a generic
+        box a device jinni has not taught."""
+        return "unknown"
+
     def version(self) -> str:
         """The adapter jinni's own version (its daemon-side half), distinct from the daemon."""
         return "unknown"

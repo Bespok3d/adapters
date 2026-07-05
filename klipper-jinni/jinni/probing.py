@@ -7,6 +7,8 @@ names it as machine tokens, never prose. The base tier is a generic box that blo
 klipper tier reads the device and the composition root assembles the token set.
 """
 import asyncio
+import re
+import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -15,6 +17,38 @@ from .layout import Layout
 
 # Klipper print_stats states in which a print is running and a service restart would interrupt it.
 _ACTIVE_PRINT_STATES = ("printing", "paused")
+
+# The machine token for a kernel module whose version magic does not match the running kernel (the
+# OTA-kernel-bump case). The app localizes it; the daemon relays it and authors no device prose.
+_VERMAGIC_MISMATCH_TOKEN = "kernel-module:vermagic-mismatch"
+_DMESG_TIMEOUT_S = 3
+
+
+def _kernel_ring_buffer() -> str:
+    """The kernel ring buffer (`dmesg`), where the module loader logs a failed insmod. Empty when
+    dmesg is unavailable, so classification just reports no known cause."""
+    try:
+        done = subprocess.run(["dmesg"], capture_output=True, text=True,
+                              timeout=_DMESG_TIMEOUT_S, check=False)
+        return done.stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _vermagic_rejected(ring_buffer: str, kernel_name: str) -> bool:
+    """Whether the kernel logged a version-magic rejection for this module: `<mod>: version magic
+    'built-for' should be 'running'`. This is the kernel's own verdict on the load, the true gate:
+    a mere non-zero insmod exit is not classified here, only the kernel's version-magic complaint
+    (a module that instead loads then misbehaves shows no such line and is not this cause).
+
+    Known limit: a point-in-time ring-buffer read is not scoped to this exact load attempt, so a
+    stale version-magic line from an earlier same-boot attempt on the SAME module could label a
+    later, differently-caused failure as a mismatch. It never mislabels a DIFFERENT module (the name
+    is bounded on both sides) and never makes the printer less safe (the plugin deactivates either
+    way, only the user-facing reason would be wrong). A future hardening compares the placed .ko's
+    own vermagic (modinfo on the file) against the running kernel's, history-independent."""
+    rejection = re.compile(rf"(?<![\w-]){re.escape(kernel_name)}: version magic ")
+    return rejection.search(ring_buffer) is not None
 
 
 class Probing:
@@ -33,6 +67,18 @@ class Probing:
         box reads its own filesystem, so the base tier answers; the kernel-module mechanism checks a
         loaded module's outcome with it."""
         return Path(path).exists()
+
+    def classify_module_load(self, name: str) -> str:
+        """A machine token for why a kernel module failed to load, or "" for no known cause. Read
+        from the kernel ring buffer, generic across linux: today's one cause is a version-magic
+        mismatch after an OTA kernel bump, which the kernel logs against the in-kernel module name
+        (a hyphen normalized to an underscore, matching how `foo-bar.ko` loads as `foo_bar`). The
+        jinni reads the device and emits the token; the daemon relays it and the app localizes it
+        (ADR-0037)."""
+        kernel_name = name.replace("-", "_")
+        if _vermagic_rejected(_kernel_ring_buffer(), kernel_name):
+            return _VERMAGIC_MISMATCH_TOKEN
+        return ""
 
     def print_active(self) -> tuple[bool, str]:
         """Whether a print is running, and the raw state string. A generic box prints nothing; the
