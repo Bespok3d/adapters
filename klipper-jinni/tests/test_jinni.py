@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import jinni
@@ -166,6 +168,27 @@ def test_base_jinni_resolves_bespok3d_placement_classes() -> None:
 def test_base_jinni_refuses_a_klipper_placement_class() -> None:
     with pytest.raises(ValueError, match="unsupported destination class"):
         _GenericTestJinni().placement_destination("klipper-config", "x.cfg")
+
+
+def test_base_jinni_resolves_the_kernel_module_placement_class() -> None:
+    assert (
+        _GenericTestJinni().placement_destination("kernel-module", "tun.ko")
+        == "$BESPOK3D/lib/modules/tun.ko"
+    )
+
+
+def test_base_jinni_renders_no_kernel_module_script() -> None:
+    with pytest.raises(NotImplementedError, match="kernel-module"):
+        _GenericTestJinni().render_module_script(
+            {"name": "tun", "module": "tun.ko"}, {"BESPOK3D": "/b3d"}
+        )
+
+
+def test_base_jinni_reports_whether_a_device_node_is_present(tmp_path: Path) -> None:
+    node = tmp_path / "tun"
+    node.write_text("")
+    assert _GenericTestJinni().device_node_present(str(node)) is True
+    assert _GenericTestJinni().device_node_present(str(tmp_path / "absent")) is False
 
 
 def test_klipper_jinni_resolves_the_klipper_source_instrument_class() -> None:

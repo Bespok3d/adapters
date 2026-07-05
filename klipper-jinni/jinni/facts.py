@@ -16,6 +16,23 @@ class Facts:
     def firmware_version(self) -> str:
         return "unknown"
 
+    def arch(self) -> str:
+        """The CPU architecture a native artifact must target (e.g. aarch64). A variant dimension: a
+        binary or kernel module is placed only when its `when.arch` matches. Unknown on a generic
+        box a device jinni has not taught."""
+        return "unknown"
+
+    def board_class(self) -> str:
+        """The board's resource tier (`standard` / `constrained`), the variant dimension a lighter
+        build selects on for a memory-starved board. Unknown until a device jinni reads it."""
+        return "unknown"
+
+    def kernel_release(self) -> str:
+        """The running kernel's release string (`uname -r`), the variant dimension a kernel module
+        is placed on: a `.ko` is cross-built per kernel, so only a variant whose kernel matches gets
+        placed. Unknown on a generic box a device jinni has not taught."""
+        return "unknown"
+
     def version(self) -> str:
         """The adapter jinni's own version (its daemon-side half), distinct from the daemon."""
         return "unknown"

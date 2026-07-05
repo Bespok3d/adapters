@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import bespok3d_jinni
@@ -49,8 +50,10 @@ def test_paths_expose_site_packages_and_service_logs() -> None:
     assert paths["MOONRAKER_LOG"] == "/oem/printer_data/logs/moonraker.log"
 
 
-def test_capability_flags_advertise_overlay_managed_service_and_lmd_control() -> None:
-    assert SnapmakerU1Jinni().capability_flags() == {"overlay", "managed-service", "lmd-control"}
+def test_capability_flags_advertise_the_u1_supported_mechanisms() -> None:
+    assert SnapmakerU1Jinni().capability_flags() == {
+        "overlay", "managed-service", "lmd-control", "kernel-modules"
+    }
 
 
 def test_restart_command_maps_each_hook_to_a_u1_command() -> None:
@@ -107,6 +110,40 @@ def test_hardware_lists_the_u1_devices() -> None:
     assert SnapmakerU1Jinni().hardware() == ["camera-mipi", "rfid-spi", "npu-rknn"]
 
 
+def test_arch_is_aarch64() -> None:
+    assert SnapmakerU1Jinni().arch() == "aarch64"
+
+
+def test_board_class_delegates_to_the_board_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bespok3d_jinni.board, "board_class", lambda: "constrained")
+    assert SnapmakerU1Jinni().board_class() == "constrained"
+
+
+def test_variant_facts_report_the_u1_selection_dimensions() -> None:
+    facts = SnapmakerU1Jinni().variant_facts()
+    assert facts["adapter"] == "snapmaker-u1"
+    assert facts["arch"] == "aarch64"
+    assert set(facts) == {
+        "adapter", "firmware_version", "arch", "board_class", "kernel_release"
+    }
+
+
+def test_kernel_release_reads_uname(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bespok3d_jinni.subprocess, "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="6.1.99\n", stderr=""),
+    )
+    assert SnapmakerU1Jinni().kernel_release() == "6.1.99"
+
+
+def test_kernel_release_is_unknown_when_uname_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: object, **kwargs: object) -> object:
+        raise OSError("uname unavailable")
+
+    monkeypatch.setattr(bespok3d_jinni.subprocess, "run", boom)
+    assert SnapmakerU1Jinni().kernel_release() == "unknown"
+
+
 def test_render_service_script_uses_start_stop_daemon() -> None:
     service = {"name": "remote-screen", "command": "/usr/bin/python3", "args": ["-u", "fb.py"]}
     script = SnapmakerU1Jinni().render_service_script(service, {"BESPOK3D": "/userdata/bespok3d"})
@@ -114,6 +151,35 @@ def test_render_service_script_uses_start_stop_daemon() -> None:
     assert "start-stop-daemon -S" in script
     assert "PIDFILE=/userdata/bespok3d/run/remote-screen.pid" in script
     assert "exec /usr/bin/python3 -u fb.py >>$LOG 2>&1" in script
+
+
+def test_render_module_script_mknods_the_nodes_and_insmods_the_module() -> None:
+    kmodule = {"name": "tun", "module": "tun.ko", "device_nodes": ["/dev/net/tun c 10 200"]}
+    script = SnapmakerU1Jinni().render_module_script(kmodule, {"BESPOK3D": "/userdata/bespok3d"})
+    assert script.startswith("#!/bin/sh")
+    assert "MODULE=/userdata/bespok3d/lib/modules/tun.ko" in script
+    assert "NAME=tun" in script
+    assert 'insmod "$MODULE"' in script
+    assert "mkdir -p /dev/net && mknod /dev/net/tun c 10 200" in script
+    assert "__MODULE__" not in script and "__MKNODS__" not in script
+
+
+def test_render_module_script_with_no_device_nodes_still_loads() -> None:
+    script = SnapmakerU1Jinni().render_module_script(
+        {"name": "8733bs", "module": "8733bs.ko", "device_nodes": []},
+        {"BESPOK3D": "/userdata/bespok3d"},
+    )
+    assert "mknod" not in script
+    assert "MODULE=/userdata/bespok3d/lib/modules/8733bs.ko" in script
+
+
+def test_render_module_script_normalizes_a_hyphen_to_the_in_kernel_name() -> None:
+    # the kernel loads foo-bar.ko as `foo_bar`, so is_loaded/rmmod must use the underscore form
+    script = SnapmakerU1Jinni().render_module_script(
+        {"name": "foo-bar", "module": "foo-bar.ko"}, {"BESPOK3D": "/userdata/bespok3d"}
+    )
+    assert "NAME=foo_bar" in script
+    assert "foo-bar" not in script.replace("foo-bar.ko", "")  # only the .ko filename keeps the dash
 
 
 def test_startup_control_scripts_render_the_lmdctl_script() -> None:

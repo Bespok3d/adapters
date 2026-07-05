@@ -7,54 +7,12 @@ classes and otherwise realizes nothing (a generic box has no klipper config dir,
 no service to restart); the klipper tier and the device jinni add their classes, commands, and
 service tokens, deferring to `super()` for the base ones.
 """
-import re
 from collections.abc import Coroutine
 from typing import Any
 
 from protocol import CommandEffect, ControlScript
 
-from .klipper_vocab import (
-    KLIPPER_SERVICE,
-    MOONRAKER_SERVICE,
-    RESTART_DISPLAY,
-    RESTART_KLIPPER,
-    RESTART_MOONRAKER,
-)
-
-# A restart/start/reload verb against a service. The generic verb is the only part of command
-# classification that is device-agnostic; the service names and device tokens come from the tier.
-_SERVICE_ACTION_RE = re.compile(r"\b(?:restart|start|reload)\b")
-
-_INERT_COMMAND = CommandEffect(
-    deferrable=False, restarts_services=(), blocking_token=None,
-)
-
-
-def _blocking_token(restarts: tuple[str, ...], restarts_display: bool) -> str | None:
-    if KLIPPER_SERVICE in restarts:
-        return RESTART_KLIPPER
-    if MOONRAKER_SERVICE in restarts:
-        return RESTART_MOONRAKER
-    if restarts_display:
-        return RESTART_DISPLAY
-    return None
-
-
-def _restarted_services(command: str) -> tuple[str, ...]:
-    return tuple(service for service in (KLIPPER_SERVICE, MOONRAKER_SERVICE) if service in command)
-
-
-def _classify_one(command: str, markers: tuple[str, ...], display_tokens: tuple[str, ...]) -> CommandEffect:  # noqa: E501
-    if not _SERVICE_ACTION_RE.search(command):
-        return _INERT_COMMAND
-    restarts = _restarted_services(command)
-    restarts_display = any(token in command for token in display_tokens)
-    token = _blocking_token(restarts, restarts_display)
-    return CommandEffect(
-        deferrable=token is not None or any(marker in command for marker in markers),
-        restarts_services=restarts,
-        blocking_token=token,
-    )
+from .classification import INERT_COMMAND, classify_one
 
 # Placement classes the bespok3d layout owns directly (over the daemon's own $BESPOK3D tree). They
 # resolve to a $VAR-templated path the executor expands; the value names no concrete device. Klipper
@@ -62,6 +20,7 @@ def _classify_one(command: str, markers: tuple[str, ...], display_tokens: tuple[
 _BESPOK3D_PLACEMENTS = {
     "system-bin": "$BESPOK3D/bin/{name}",
     "web-location": "$BESPOK3D/etc/nginx/locations/{name}",
+    "kernel-module": "$BESPOK3D/lib/modules/{name}",
 }
 
 
@@ -88,10 +47,16 @@ class Realization:
     def classify_commands(self, commands: list[str]) -> list[CommandEffect]:
         """How each generated start command acts on the device's services. A generic box has no
         services, so nothing is a service action; the klipper tier judges the real ones."""
-        return [_INERT_COMMAND for _ in commands]
+        return [INERT_COMMAND for _ in commands]
 
     def render_service_script(self, service: dict, paths: dict[str, str]) -> str:
         raise NotImplementedError("managed-service")
+
+    def render_module_script(self, kmodule: dict, paths: dict[str, str]) -> str:
+        """The kernel-module loader script (mknod device nodes, insmod, rmmod). Device-realm
+        knowledge, so the base tier renders none; a device jinni that advertises `kernel-modules`
+        supplies it."""
+        raise NotImplementedError("kernel-module")
 
     def startup_control_scripts(self, paths: dict[str, str]) -> list[ControlScript]:
         """Control scripts the daemon writes into the persistent bespok3d tree on startup (e.g. a
@@ -136,7 +101,7 @@ class KlipperRealization(Realization):
     def classify_commands(self, commands: list[str]) -> list[CommandEffect]:
         markers = self.deferred_service_markers()
         display = self.display_service_tokens()
-        return [_classify_one(command, markers, display) for command in commands]
+        return [classify_one(command, markers, display) for command in commands]
 
     def deferred_service_markers(self) -> tuple[str, ...]:
         """Device tokens that mark a batchable service command (e.g. the init-script dir, the web

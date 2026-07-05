@@ -63,8 +63,21 @@ class Jinni(Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Fa
             "installed": self.installed_plugins(),
             "deactivated": self.deactivated_plugins(),
             "firmware_version": self.firmware_version(),
+            "arch": self.arch(),
+            "board_class": self.board_class(),
             "jinni_version": self.version(),
             "capability_flags": sorted(self.capability_flags()),
             "preferred_registries": self.preferred_registries(),
             "endpoints": self.inspect()["endpoints"],
+        }
+
+    def variant_facts(self) -> dict[str, str]:
+        """The facts the variant engine matches a manifest's `when` against, kept apart from the
+        full capabilities report so an install can read them without the port scan `inspect()`."""
+        return {
+            "adapter": self.id,
+            "firmware_version": self.firmware_version(),
+            "arch": self.arch(),
+            "board_class": self.board_class(),
+            "kernel_release": self.kernel_release(),
         }

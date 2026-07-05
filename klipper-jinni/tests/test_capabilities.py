@@ -41,3 +41,19 @@ def test_generic_jinni_installed_plugins_returns_a_dict() -> None:
 
 def test_generic_jinni_firmware_version_returns_unknown() -> None:
     assert GenericJinni().firmware_version() == "unknown"
+
+
+def test_generic_jinni_arch_and_board_class_default_to_unknown() -> None:
+    generic = GenericJinni()
+    assert generic.arch() == "unknown"
+    assert generic.board_class() == "unknown"
+    assert generic.kernel_release() == "unknown"
+
+
+def test_variant_facts_carry_the_selection_dimensions() -> None:
+    facts = GenericJinni().variant_facts()
+    assert set(facts) == {"adapter", "firmware_version", "arch", "board_class", "kernel_release"}
+    assert facts["firmware_version"] == "unknown"
+    assert facts["arch"] == "unknown"
+    assert facts["board_class"] == "unknown"
+    assert facts["kernel_release"] == "unknown"

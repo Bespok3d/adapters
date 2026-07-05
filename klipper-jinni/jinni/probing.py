@@ -8,6 +8,7 @@ klipper tier reads the device and the composition root assembles the token set.
 """
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from . import inspection
 from .layout import Layout
@@ -26,6 +27,12 @@ class Probing:
         """GET a localhost service URL: (up, body). An auth-required answer still means up; a
         connection error means not-yet-up. Overridable for a device whose services differ."""
         return inspection.http_service_get(url, timeout)
+
+    def device_node_present(self, path: str) -> bool:
+        """Whether a filesystem path exists on the printer (a device node like /dev/net/tun). Any
+        box reads its own filesystem, so the base tier answers; the kernel-module mechanism checks a
+        loaded module's outcome with it."""
+        return Path(path).exists()
 
     def print_active(self) -> tuple[bool, str]:
         """Whether a print is running, and the raw state string. A generic box prints nothing; the
