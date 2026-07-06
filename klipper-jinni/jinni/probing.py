@@ -8,11 +8,10 @@ klipper tier reads the device and the composition root assembles the token set.
 """
 import asyncio
 import re
-import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from . import inspection
+from . import inspection, kernel_log
 from .layout import Layout
 
 # Klipper print_stats states in which a print is running and a service restart would interrupt it.
@@ -21,18 +20,6 @@ _ACTIVE_PRINT_STATES = ("printing", "paused")
 # The machine token for a kernel module whose version magic does not match the running kernel (the
 # OTA-kernel-bump case). The app localizes it; the daemon relays it and authors no device prose.
 _VERMAGIC_MISMATCH_TOKEN = "kernel-module:vermagic-mismatch"
-_DMESG_TIMEOUT_S = 3
-
-
-def _kernel_ring_buffer() -> str:
-    """The kernel ring buffer (`dmesg`), where the module loader logs a failed insmod. Empty when
-    dmesg is unavailable, so classification just reports no known cause."""
-    try:
-        done = subprocess.run(["dmesg"], capture_output=True, text=True,
-                              timeout=_DMESG_TIMEOUT_S, check=False)
-        return done.stdout
-    except (OSError, subprocess.SubprocessError):
-        return ""
 
 
 def _vermagic_rejected(ring_buffer: str, kernel_name: str) -> bool:
@@ -76,7 +63,7 @@ class Probing:
         jinni reads the device and emits the token; the daemon relays it and the app localizes it
         (ADR-0037)."""
         kernel_name = name.replace("-", "_")
-        if _vermagic_rejected(_kernel_ring_buffer(), kernel_name):
+        if _vermagic_rejected(kernel_log.ring_buffer(), kernel_name):
             return _VERMAGIC_MISMATCH_TOKEN
         return ""
 

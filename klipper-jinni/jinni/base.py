@@ -17,12 +17,15 @@ from .device_files import DeviceFiles
 from .facts import Facts
 from .integration import Integration
 from .layout import Layout
+from .oom_probe import OomProbe
 from .probing import Probing
 from .realization import Realization
 from .wiring import Wiring
 
 
-class Jinni(Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Facts, Probing, ABC):
+class Jinni(
+    Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Facts, Probing, OomProbe, ABC,
+):
     id: str = "generic"
 
     def installed_plugins(self) -> dict[str, str]:
