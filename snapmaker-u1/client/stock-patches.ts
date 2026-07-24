@@ -11,6 +11,7 @@ export function patchNginx(content: string): string {
   if (!stripped.endsWith('}')) {
     throw new Error('Unexpected nginx config format: file does not end with "}"')
   }
+
   return stripped.slice(0, -1) + includeLine + '}\n'
 }
 
@@ -24,5 +25,6 @@ export function patchS90lmd(content: string): string {
   }
   const hookLine = '[ -x /etc/init.d/S99bespok3d ] && exec /etc/init.d/S99bespok3d "$@"'
   lines.splice(1, 0, hookLine)
+
   return lines.join('\n')
 }

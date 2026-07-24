@@ -10,9 +10,10 @@ import { devSourcePath } from '@adapter-sdk'
 export function adapterJinniPath(): string {
   const devOverride = devSourcePath(join('adapters', 'snapmaker-u1', 'jinni'))
   if (devOverride) return devOverride
+
   return app.isPackaged
     ? join(process.resourcesPath, 'adapters', 'snapmaker-u1', 'jinni')
-    : join(app.getAppPath(), '..', '..', '..', 'adapters', 'snapmaker-u1', 'jinni')
+    : join(app.getAppPath(), '..', 'adapters', 'snapmaker-u1', 'jinni')
 }
 
 // The shared klipper jinni runtime (the `jinni` package: base Jinni, KlipperPrinterJinni, the facets,
@@ -22,17 +23,19 @@ export function adapterJinniPath(): string {
 export function klipperJinniPath(): string {
   const devOverride = devSourcePath(join('adapters', 'klipper-jinni', 'jinni'))
   if (devOverride) return devOverride
+
   return app.isPackaged
     ? join(process.resourcesPath, 'adapters', 'klipper-jinni', 'jinni')
-    : join(app.getAppPath(), '..', '..', '..', 'adapters', 'klipper-jinni', 'jinni')
+    : join(app.getAppPath(), '..', 'adapters', 'klipper-jinni', 'jinni')
 }
 
 export function daemonSrcPath(): string {
   const devOverride = devSourcePath('daemon')
   if (devOverride) return devOverride
+
   return app.isPackaged
     ? join(process.resourcesPath, 'daemon')
-    : join(app.getAppPath(), '..', '..', '..', 'daemon')
+    : join(app.getAppPath(), '..', 'daemon')
 }
 
 function loadAdapterPaths(): Record<string, string> {

@@ -1,8 +1,6 @@
 {
   "tsCeiling": 300,
   "pyCeiling": 150,
-  "allowlist": {
-    "client/enroll-steps.ts": 377
-  },
-  "_note": "Per-concern file ceilings (.ts app-style 300, .py daemon-style 150). The allowlist holds reviewed exceptions with their current line count, FROZEN: a listed file may not grow, and any shrink must be banked by lowering its number (the ratchet click). A NEW source file over its ceiling fails the gate; split it by concern, or add it here with sign-off. client/enroll-steps.ts is the one cohesive enrollment recipe (15 documented steps + their manifest); it is over the ts ceiling because of the per-step description prose, not because it mixes concerns."
+  "allowlist": {},
+  "_note": "Per-concern file ceilings (.ts app-style 300, .py daemon-style 150). The allowlist holds reviewed exceptions with their current line count, FROZEN: a listed file may not grow, and any shrink must be banked by lowering its number (the ratchet click). A NEW source file over its ceiling fails the gate; split it by concern, or add it here with sign-off. It is empty: every source file in this repo is under its ceiling."
 }

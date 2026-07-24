@@ -14,6 +14,7 @@ function sleep(ms: number): Promise<void> {
 async function tryMdnsLookup(hostname: string): Promise<string | null> {
   try {
     const { address } = await lookup(`${hostname}.local`)
+
     return address
   } catch {
     return null
@@ -29,6 +30,7 @@ async function tryConnect(ctx: EnrollContext): Promise<boolean> {
       password: ctx.credentials.password,
     })
     session.close()
+
     return true
   } catch {
     return false
@@ -54,9 +56,12 @@ export async function pollReconnect(
     if (newIp && newIp !== ctx.ip) {
       ctx.onProgress?.(`Printer reconnected at new IP ${newIp}; updating`)
       ctx.ip = newIp
+
       return
     }
+
     return pollReconnect(ctx, hostname, start, true)
   }
+
   return pollReconnect(ctx, hostname, start, hintSent)
 }

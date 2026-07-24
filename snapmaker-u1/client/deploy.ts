@@ -19,6 +19,7 @@ function collectDaemonEntry(
   if (NON_DEPLOY_DIRS.has(entry.name)) return []
   const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
   if (entry.isDirectory()) return daemonFiles(join(dir, entry.name), relativePath)
+
   return entry.name.endsWith('.py') ? [relativePath] : []
 }
 
@@ -38,6 +39,7 @@ function collectJinniEntry(
   if (NON_DEPLOY_DIRS.has(entry.name)) return []
   const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
   if (entry.isDirectory()) return jinniFiles(join(dir, entry.name), relativePath)
+
   return [relativePath]
 }
 
@@ -49,6 +51,7 @@ export function jinniFiles(srcBase: string, prefix = ''): string[] {
 
 export function daemonModuleDirs(files: string[]): string[] {
   const dirs = new Set(files.map(dirname).filter((dir) => dir !== '.'))
+
   return [...dirs]
 }
 

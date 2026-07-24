@@ -2,4 +2,4 @@
 // app (no let, no for loops, function declarations, max-depth, etc.). Re-export the app's flat config
 // rather than duplicate it; its plugin imports resolve from the app's node_modules. Running eslint
 // from the adapter root makes this the discovered config and the adapter root the base path.
-export { default } from '../../Bespok3d/src/application/eslint.config.mjs'
+export { default } from '../../Bespok3d-desktop/eslint.config.mjs'

@@ -10,6 +10,7 @@ export const OVERLAY_DEBUG_FLAG = '/oem/.debug'
 
 export async function writeLayerActive(ssh: SshSession): Promise<boolean> {
   const out = await ssh.exec(`test -f ${OVERLAY_DEBUG_FLAG} && echo yes || echo no`)
+
   return out.trim() === 'yes'
 }
 
@@ -20,6 +21,7 @@ export async function verifyEnrolled(ssh: SshSession): Promise<boolean> {
   if (!(await writeLayerActive(ssh))) return false
   try {
     await ssh.exec(`test -d ${BESPOK3D}`)
+
     return true
   } catch {
     return false

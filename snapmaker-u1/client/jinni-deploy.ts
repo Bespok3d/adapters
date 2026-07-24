@@ -27,6 +27,7 @@ async function uploadKlipperJinni(ssh: SshSession, ctx: EnrollContext): Promise<
     if (index >= files.length) return
     ctx.onProgress?.(`Uploading jinni runtime… ${index + 1}/${files.length}`)
     await ssh.putContent(`${DAEMON_BASE}/jinni/${files[index]}`, readFileSync(join(src, files[index]), 'utf-8'))
+
     return uploadFromIndex(index + 1)
   }
 
@@ -44,6 +45,7 @@ export async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext): P
     if (index >= files.length) return
     ctx.onProgress?.(`Uploading adapter jinni… ${index + 1}/${files.length}`)
     await uploadDaemonFile(ssh, jinniSrc, files[index])
+
     return uploadFromIndex(index + 1)
   }
 

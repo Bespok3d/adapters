@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The snapmaker-u1 adapter's own gate, parity with the daemon and app gates. The adapter is its own
 # repo with two halves: a TypeScript client and a Python jinni. It borrows the daemon's venv for the
-# jinni's Python toolchain and the app's node toolchain for the client's TS, exactly as the app gate
+# jinni's Python toolchain and the app's node toolchain for the client's TS, exactly as the workspace gate
 # already borrows the daemon venv for plugin/adapter Python. Adapter-specific guards (em-dash ban,
 # size ratchet) are run from here. Exits non-zero on any failure.
 set -uo pipefail
@@ -12,7 +12,7 @@ DAEMON_DIR="$WORKSPACE/daemon"
 KLIPPER_JINNI_DIR="$WORKSPACE/adapters/klipper-jinni"
 VENV="$DAEMON_DIR/.venv"
 RUFF_CFG="$DAEMON_DIR/pyproject.toml"
-APP_DIR="$WORKSPACE/Bespok3d/src/application"
+APP_DIR="$WORKSPACE/Bespok3d-desktop"
 JINNI="$ADAPTER_ROOT/jinni"
 
 pass=0
@@ -43,7 +43,7 @@ run_check "pytest (jinni)" "$VENV/bin/pytest" --tb=short -q "$JINNI/tests"
 
 run_check "tsc (client)"    bash -c "cd '$APP_DIR' && npx --no-install tsc -p tsconfig.node.json --noEmit"
 run_check "eslint (client)" bash -c "cd '$ADAPTER_ROOT' && '$APP_DIR/node_modules/.bin/eslint' client"
-run_check "vitest (client)" bash -c "cd '$APP_DIR' && npx --no-install vitest run '$ADAPTER_ROOT'"
+run_check "vitest (client)" bash -c "cd '$ADAPTER_ROOT' && '$APP_DIR/node_modules/.bin/vitest' run"
 
 echo ""
 echo "  $pass passed, $fail failed"

@@ -1,0 +1,87 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
+import type { SshSession, EnrollContext } from '@adapter-sdk'
+
+import { BESPOK3D, PRINTER_DATA, daemonSrcPath } from '../paths'
+import { patchNginx, patchS90lmd } from '../stock-patches'
+
+// Where bespok3d meets the stock Snapmaker system: its boot sequence, its web server and its Klipper
+// and Moonraker configs. Every edit here is minimal and additive, so a printer keeps working exactly
+// as it did before, and every one is idempotent, so a re-enroll never doubles it up.
+
+export async function stepDeployS99(ssh: SshSession): Promise<void> {
+  const content = readFileSync(join(daemonSrcPath(), 'S99bespok3d'), 'utf-8')
+  await ssh.putContent('/etc/init.d/S99bespok3d', content)
+  await ssh.exec('chmod 755 /etc/init.d/S99bespok3d')
+}
+
+export async function stepPatchS90lmd(ssh: SshSession): Promise<void> {
+  const content = await ssh.getContent('/etc/init.d/S90lmd')
+  const patched = patchS90lmd(content)
+  if (patched === content) return
+  await ssh.putContent('/etc/init.d/S90lmd', patched)
+}
+
+export async function stepStableNetwork(ssh: SshSession): Promise<void> {
+  await ssh.exec(`rm -rf /oem/dhcpcd`)
+  await ssh.exec(
+    `
+    if [ ! -L /var/db/dhcpcd ]; then
+      mkdir -p ${BESPOK3D}/var/db/dhcpcd
+      [ -d /var/db/dhcpcd ] && cp -a /var/db/dhcpcd/. ${BESPOK3D}/var/db/dhcpcd/ 2>/dev/null || true
+      rm -rf /var/db/dhcpcd
+      ln -sf ${BESPOK3D}/var/db/dhcpcd /var/db/dhcpcd
+    fi
+  `.trim()
+  )
+  await ssh.exec(
+    `
+    MAC=$(cat /sys/class/net/wlan0/address 2>/dev/null)
+    if [ -n "$MAC" ]; then
+      mkdir -p /etc/udev/rules.d
+      printf 'SUBSYSTEM=="net", ACTION=="add", KERNEL=="wlan0", RUN+="/sbin/ip link set wlan0 address %s"\\n' "$MAC" \
+        > /etc/udev/rules.d/70-wlan0-mac.rules
+    fi
+  `.trim()
+  )
+}
+
+export async function stepPatchNginx(ssh: SshSession): Promise<void> {
+  const content = await ssh.getContent('/etc/nginx/sites-enabled/fluidd')
+  const patched = patchNginx(content)
+  if (patched === content) return
+  await ssh.putContent('/etc/nginx/sites-enabled/fluidd', patched)
+}
+
+export async function stepKlipperIncludes(ssh: SshSession, ctx: EnrollContext): Promise<void> {
+  await ssh.exec(
+    `
+    mkdir -p ${PRINTER_DATA}/config/bespok3d/klipper \
+              ${PRINTER_DATA}/config/bespok3d/moonraker \
+              ${PRINTER_DATA}/config/bespok3d/data &&
+    touch ${PRINTER_DATA}/config/bespok3d/klipper/main.cfg \
+          ${PRINTER_DATA}/config/bespok3d/moonraker/main.cfg &&
+    chown -R ${ctx.runtimeUser}:${ctx.runtimeUser} ${PRINTER_DATA}/config/bespok3d &&
+    chmod -R 755 ${PRINTER_DATA}/config/bespok3d
+  `.trim()
+  )
+  await ssh.exec(
+    `grep -q 'bespok3d/klipper' ${PRINTER_DATA}/config/printer.cfg 2>/dev/null || python3 -c "
+content = open('${PRINTER_DATA}/config/printer.cfg').read()
+marker = '#*# <---------------------- SAVE_CONFIG'
+line = '\\n[include bespok3d/klipper/*.cfg]\\n'
+idx = content.find(marker)
+open('${PRINTER_DATA}/config/printer.cfg', 'w').write(content[:idx]+line+content[idx:] if idx>=0 else content+line)
+"`
+  )
+  await ssh.exec(
+    `grep -q 'bespok3d/moonraker' ${PRINTER_DATA}/config/moonraker.conf 2>/dev/null || python3 -c "
+content = open('${PRINTER_DATA}/config/moonraker.conf').read()
+marker = '#*# <---------------------- SAVE_CONFIG'
+line = '\\n[include bespok3d/moonraker/*.cfg]\\n'
+idx = content.find(marker)
+open('${PRINTER_DATA}/config/moonraker.conf', 'w').write(content[:idx]+line+content[idx:] if idx>=0 else content+line)
+"`
+  )
+}

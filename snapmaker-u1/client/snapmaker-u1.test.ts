@@ -4,10 +4,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getAdapter } from '@adapter-sdk'
 
-// getAppPath() resolved to src/application so the client's adapterJinniPath() points at the real
+// getAppPath() resolved to the app repo root so the client's adapterJinniPath() points at the real
 // jinni dir regardless of the test runner's cwd (the client reads paths.json at module load).
 vi.mock('electron', () => ({
-  app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../Bespok3d/src/application', import.meta.url)) },
+  app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../Bespok3d-desktop', import.meta.url)) },
 }))
 
 import type { SshSession } from '@adapter-sdk'
@@ -19,6 +19,7 @@ function fakeSsh(reply: (cmd: string) => string): SshSession {
   return {
     exec: (cmd: string) => {
       const out = reply(cmd)
+
       return out === '__throw__' ? Promise.reject(new Error('non-zero exit')) : Promise.resolve(out)
     },
   } as unknown as SshSession
