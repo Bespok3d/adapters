@@ -14,6 +14,7 @@ from pathlib import Path
 
 from protocol import ActionResult
 
+from . import stale_dentry
 from .reversion_record import WIRING_RECORD, merge_record, reversion
 
 _SYMLINK_ORIG_DIR = "symlink_orig"
@@ -51,15 +52,31 @@ def _displace_existing_destination(destination: Path, backup: Path) -> None:
     shutil.move(str(destination), str(backup))
 
 
+def _place_symlink(source: Path, destination: Path, backup: Path) -> dict[str, str]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _displace_existing_destination(destination, backup)
+    destination.symlink_to(source)
+    return reversion(destination, backup)
+
+
+def _rewire_past_stale_dentry(source: Path, destination: Path, backup: Path) -> tuple[ActionResult, dict[str, str]]:  # noqa: E501
+    """A destination wedged by an orphaned overlay name yields to nothing but a dentry-cache drop,
+    so clear it and place the link once more before calling the wiring a failure."""
+    stale_dentry.drop_dentry_cache()
+    try:
+        return ActionResult(ok=True, output=""), _place_symlink(source, destination, backup)
+    except OSError as exc:
+        return ActionResult(ok=False, output=str(exc)), {}
+
+
 def _wire_one(source: Path, destination: Path, backup_root: Path) -> tuple[ActionResult, dict[str, str]]:  # noqa: E501
     backup = _backup_path(backup_root, destination)
     try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        _displace_existing_destination(destination, backup)
-        destination.symlink_to(source)
+        return ActionResult(ok=True, output=""), _place_symlink(source, destination, backup)
     except OSError as exc:
-        return ActionResult(ok=False, output=str(exc)), {}
-    return ActionResult(ok=True, output=""), reversion(destination, backup)
+        if not stale_dentry.is_stale_handle(exc):
+            return ActionResult(ok=False, output=str(exc)), {}
+    return _rewire_past_stale_dentry(source, destination, backup)
 
 
 def _unwire_one(destination: Path, backup_root: Path) -> ActionResult:

@@ -5,9 +5,11 @@ The daemon resolves where a file belongs; creating, backing up, and removing the
 the jinni's actuation. These guard the stock-original backup/restore contract and the declarative
 reversion record the off-host escape hatch replays.
 """
+import errno
 import json
 from pathlib import Path
 
+from jinni import stale_dentry
 from jinni.wiring import Wiring
 
 
@@ -98,3 +100,52 @@ def test_a_second_wire_accumulates_into_the_record(tmp_path: Path) -> None:
     record = json.loads((plugin_dir / "wiring.json").read_text())
     paths = {reversion["path"] for reversion in record["reversions"]}
     assert paths == {str(first_dest), str(second_dest)}
+
+
+def _wedge_destination_once(monkeypatch, drops: list[str]) -> None:
+    """Stand in for an orphaned overlay name: the first symlink attempt fails the way the kernel
+    fails one (ESTALE), and it stops failing once the dentry cache has been dropped."""
+    stock_symlink_to = Path.symlink_to
+
+    def symlink_to(self: Path, target, target_is_directory: bool = False) -> None:  # noqa: ANN001
+        if not drops:
+            raise OSError(errno.ESTALE, "Stale file handle", str(self))
+        stock_symlink_to(self, target, target_is_directory)
+
+    monkeypatch.setattr(Path, "symlink_to", symlink_to)
+    monkeypatch.setattr(stale_dentry, "drop_dentry_cache", lambda: drops.append("dropped"))
+
+
+def test_wire_recovers_from_a_destination_wedged_by_a_stale_overlay_name(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, E501
+    plugin_dir = tmp_path / "plugin"
+    source = plugin_dir / "files" / "apprise"
+    source.parent.mkdir(parents=True)
+    source.mkdir()
+    destination = tmp_path / "site-packages" / "apprise"
+    drops: list[str] = []
+    _wedge_destination_once(monkeypatch, drops)
+
+    outcomes = _wire(plugin_dir, source, destination)
+
+    assert drops == ["dropped"]
+    assert outcomes[0].ok, outcomes[0].output
+    assert destination.is_symlink()
+
+
+def test_wire_does_not_drop_the_dentry_cache_for_an_ordinary_failure(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, E501
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    source = tmp_path / "thing.cfg"
+    source.write_text("x")
+    drops: list[str] = []
+    monkeypatch.setattr(stale_dentry, "drop_dentry_cache", lambda: drops.append("dropped"))
+
+    def refuse(self: Path, target, target_is_directory: bool = False) -> None:  # noqa: ANN001
+        raise OSError(errno.EACCES, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "symlink_to", refuse)
+
+    outcomes = _wire(plugin_dir, source, tmp_path / "dest.cfg")
+
+    assert drops == []
+    assert not outcomes[0].ok
