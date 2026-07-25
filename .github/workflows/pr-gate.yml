@@ -1,0 +1,54 @@
+name: pr-gate
+
+# Every pull request runs the shared em-dash and workflow-pinning guards, plus shellcheck, across both
+# adapters in this repo (snapmaker-u1, klipper-jinni). Those guards live in lib_bespok3d, mounted here as
+# a git submodule, so the checkout must fetch it.
+#
+# The repo's own checkout uses the auto GITHUB_TOKEN, which is always valid for this repo. The submodule
+# lives in a SEPARATE private repo that GITHUB_TOKEN cannot read, so it is fetched in its own step with a
+# read token (MAIN_INDEX_TOKEN). The main checkout runs with persist-credentials off so it does not leave
+# GITHUB_TOKEN in git config, where it would otherwise be reused for the submodule fetch and 403 on the
+# private repo. The submodule URL in .gitmodules is HTTPS so the token applies.
+#
+# This gate runs the SHARED tooling only, not each adapter's full scripts/check.sh. Those scripts are
+# coupled to the whole workspace: klipper-jinni resolves the daemon's protocol package and drives the
+# daemon core over a socket, and snapmaker-u1's client half type-checks, lints and tests against the app's
+# @adapter-sdk with the app's node toolchain. None of daemon, klipper-jinni's sibling or the app are on a
+# single-repo runner, so the coupled suite cannot run here yet (Stage 2 finding F2). Making check.sh
+# CI-self-contained (fetch the siblings, build the app) is a separate effort; this gate delivers the
+# shared-tooling reach in the meantime and is honestly green rather than a forced pass.
+#
+# This is a check-only run: it never builds, packs, signs or publishes, so no signing key is in scope.
+# The single secret it holds is the submodule read token. It is deliberately NOT named pr-build.yml: that
+# name is reserved for a b3-builder preview build, which the pinning guard forbids from holding any secret
+# at all. See the go-public finding: swap this token for a read-only one, or make lib_bespok3d public,
+# before external forks open PRs (a fork PR receives no secret and its checkout of the private submodule
+# would fail).
+on:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Fetch the shared-tooling submodule
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.MAIN_INDEX_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          git submodule update --init --recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Shared tooling (em-dash, workflow-pinning, shellcheck)
+        run: |
+          . lib_bespok3d/tooling/gate-lib.sh
+          em_dash_check .
+          workflow_pinning_check .
+          shellcheck_repo .
+          gate_summary
