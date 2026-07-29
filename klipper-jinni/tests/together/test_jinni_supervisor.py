@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The daemon supervising a real jinni child over the socket (ADR-0037 THE FLIP).
 
 The daemon spawns `python -m jinni <socket>`, waits for the protocol handshake, and routes the seam

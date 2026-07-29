@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Snapmaker U1 Jinni: the daemon-side half of the U1 adapter.
 
 Shipped with the adapter and installed next to the daemon, which loads it via `make_jinni()`. It is

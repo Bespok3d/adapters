@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The blocked-action subscribe stream the jinni serves to the daemon (ADR-0037).
 
 One subscription per client: push the blocked-action token set on change. Distinct from the one-shot

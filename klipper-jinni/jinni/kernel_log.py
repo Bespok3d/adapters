@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Read the kernel ring buffer (`dmesg`): the one low-level read the kernel diagnostics share.
 
 Both the module-load classifier (a failed insmod) and the out-of-memory probe (the OOM killer's

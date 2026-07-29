@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { resolve } from 'path'
 
 // This repo carries no node_modules of its own: the client's tests run on the app's node toolchain,

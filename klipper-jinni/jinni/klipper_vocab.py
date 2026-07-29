@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The klipper jinni's vocabulary: the service names it reports and the action tokens it emits.
 
 These are device vocabulary, not the shared protocol: a klipper printer is the thing that has a

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The base Jinni tier: a generic linux box, composed from the concern facets.
 
 The jinni interface spans four concerns, one facet module each: the filesystem `layout` contract,

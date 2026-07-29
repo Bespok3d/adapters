@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Size ratchet: makes a god file a failing, visible check, so a concern-mixing file like the old
 // 794-line snapmaker-u1.ts cannot re-form unnoticed. Reads adapter-baseline.json and enforces:
 //   1. No NEW source file over its per-extension ceiling unless it is an allowlisted exception.

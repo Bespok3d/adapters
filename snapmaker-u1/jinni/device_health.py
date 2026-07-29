@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The U1's device-realm failure diagnosis.
 
 Recognise a NON-plugin cause the safety net must report instead of blaming a plugin, and emit a

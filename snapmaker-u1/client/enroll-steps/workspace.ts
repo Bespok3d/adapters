@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { BESPOK3D, BESPOK3D_SYSTEM_VERSION, SYSTEM_VERSION_FILE } from '../paths'

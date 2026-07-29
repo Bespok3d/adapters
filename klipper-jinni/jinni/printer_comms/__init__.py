@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Communication with the printer's own running services.
 
 The jinni is the daemon's device-side half, and talking to the OTHER software running on the printer

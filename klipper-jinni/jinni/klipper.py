@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The klipper-printer Jinni tier: composes the klipper concern facets over the generic base.
 
 A klipper printer overrides realization (its config / extra / component placement classes), facts

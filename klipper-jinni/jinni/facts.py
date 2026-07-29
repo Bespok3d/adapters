@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The reported-facts facet of the jinni: the static target facts the daemon relays to the app.
 
 Each is an overridable stub the base tier answers with a neutral default ("unknown", empty), so a

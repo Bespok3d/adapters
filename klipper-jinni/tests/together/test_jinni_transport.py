@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni seam over the socket (ADR-0037 THE FLIP).
 
 The seam's transport is pluggable: in-process by default, the socket once the daemon spawns its

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The filesystem-layout facet of the jinni: where the bespok3d tree and the device's dirs live.
 
 `paths()` always merges the core path variables (`BESPOK3D`, `BESPOK3D_PLUGINS`, `RUNTIME_USER`)

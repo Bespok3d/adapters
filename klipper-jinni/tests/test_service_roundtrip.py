@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni-as-a-process final form (ADR-0037): the daemon talks to the jinni over a Unix socket.
 
 These start the real service on a temp socket and drive it through the real client (`protocol.call`,

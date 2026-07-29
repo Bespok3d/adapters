@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Recover a destination wedged by an orphaned overlayfs dentry (ADR-0037: device realm).
 
 On an overlayfs root a name can outlive its upper-layer entry: the kernel still caches the dentry,

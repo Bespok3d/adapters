@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni reads the kernel's out-of-memory evidence and reports the kill and its victim.
 
 Detection for the constrained-board safety net (ADR-0037): /proc/vmstat's cumulative `oom_kill`

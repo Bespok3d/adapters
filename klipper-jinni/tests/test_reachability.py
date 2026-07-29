@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The base Jinni owns reachability: is a localhost service answering, is a TCP port open.
 
 These were the low-level primitives the safety net's per-service probes built on; the jinni is the

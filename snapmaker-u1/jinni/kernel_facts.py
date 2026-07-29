@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Read the running kernel's version magic from a loaded module (ground truth for a .ko build).
 
 `uname -r` gives the release but not the full magic string (`... SMP preempt mod_unload aarch64`)

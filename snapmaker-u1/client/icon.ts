@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The Snapmaker U1 avatar shown on every printer running this adapter (until the user picks their
 // own picture). A 128px render of the U1 on a transparent ground, so the printer's chosen colour
 // shows through. Inlined as a data: URL to satisfy the renderer CSP (img-src 'self' data:) without

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The actuation facet of the jinni: run the device actions the daemon resolved (ADR-0037).
 
 The daemon orchestrates: it resolves a plugin's start/restart/stop commands (via the realization

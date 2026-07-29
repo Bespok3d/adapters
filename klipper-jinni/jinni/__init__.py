@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The Jinni interface: the contract the generic daemon orders a target-specific adapter against.
 
 The daemon owns everything inside the bespok3d filesystem and never knows a specific target. Every

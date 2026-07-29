@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni runtime's reported facts, in isolation.
 
 These test the jinni tiers directly (a generic box vs a klipper printer): what each declares as

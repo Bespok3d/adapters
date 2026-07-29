@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Wiring for the daemon-with-jinni together tests.
 
 These exercise the two apps as a pair: the daemon's seam/supervisor driving a real klipper jinni

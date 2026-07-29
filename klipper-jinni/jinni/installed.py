@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Enumerate what is installed under the bespok3d plugin root: the installed plugins and which the
 safety net (or the user) turned off. Pure filesystem reads over the plugin tree, so they live in
 their own leaf rather than in the Jinni interface; the base Jinni's `installed_plugins` /

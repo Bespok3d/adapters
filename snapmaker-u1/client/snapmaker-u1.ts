@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { registerAdapter } from '@adapter-sdk'
 
 import { ENV_VARS } from './env-vars'

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Klipper API-socket client: pure protocol framing + a live round-trip over a fake Unix socket."""
 import json
 import os

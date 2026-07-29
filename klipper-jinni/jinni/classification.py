@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Classify a generated start command by its effect on the device's services (ADR-0037).
 
 Does a command restart a core service (so the batch defers it and the print guard blocks it

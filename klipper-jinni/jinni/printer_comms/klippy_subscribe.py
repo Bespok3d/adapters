@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Subscribe to Klipper's print_stats over its auth-free API socket, push-style (ADR-0037).
 
 The one-shot reads live in `klippy`; this is the long-lived watch the jinni keeps so it can stream

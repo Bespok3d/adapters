@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The out-of-memory probing facet: read the kernel's OOM evidence for the constrained-board net.
 
 Detection (ADR-0037): the cumulative oom_kill counter from /proc/vmstat and the most recent victim

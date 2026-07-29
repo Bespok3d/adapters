@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure patchers for the two OEM files bespok3d modifies in place: the nginx site (so plugins can
 // drop location blocks) and the S90lmd boot script (so control passes to S99bespok3d). Both are
 // idempotent: already-patched content is returned unchanged.

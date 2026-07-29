@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Gate: the jinni process must stay lean.
 
 The jinni is a SECOND long-lived python process the daemon parents on the printer (ADR-0037), and

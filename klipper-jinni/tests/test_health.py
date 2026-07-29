@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The klipper printer jinni judges its own health and reports it as one DeviceHealth (ADR-0037).
 
 `health()` is the single verb the daemon's safety net asks for. It probes each service over its

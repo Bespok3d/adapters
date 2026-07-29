@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni as a process: serve the contract over a Unix socket (ADR-0037).
 
 The daemon spawns and parents this. It loads the device jinni, writes the jinni's startup control

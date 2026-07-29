@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The realization facet of the jinni: turn an install intent into a concrete target or command.
 
 When the daemon places a file, instruments a source, restarts a service, generates a service script,

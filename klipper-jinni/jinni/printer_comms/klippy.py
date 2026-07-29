@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Talk to Klipper's API server over its Unix domain socket.
 
 This is local IPC with NO authentication, so it keeps working when Moonraker has `force_logins` on

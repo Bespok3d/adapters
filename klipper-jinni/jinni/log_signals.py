@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Read the printer's service logs and pull failure SIGNALS out of them (ADR-0037: device-side).
 
 Reading and parsing a Klipper/Moonraker log, which config section / import / file failed, and the

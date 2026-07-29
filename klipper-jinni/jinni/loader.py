@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Load the Jinni the adapter shipped, or fall back to generic.
 
 An adapter installs its jinni as a module named `bespok3d_jinni` next to the daemon (on the python

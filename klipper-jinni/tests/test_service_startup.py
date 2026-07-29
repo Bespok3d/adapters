@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni process writes the device's startup control scripts before serving (ADR-0037).
 
 The child does its own in-process lifecycle: on `run`, before it serves the contract, it writes the

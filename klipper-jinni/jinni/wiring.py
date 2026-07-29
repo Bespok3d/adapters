@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The symlink wiring facet of the jinni (ADR-0037).
 
 The daemon places a plugin's files in the bespok3d tree and resolves where each one belongs, then

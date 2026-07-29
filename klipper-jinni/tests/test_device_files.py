@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The device-file r/w facet (ADR-0037): the jinni reads a stock file for the daemon to patch
 (fetch) and writes the patched / restored content back (write_files), recording the restore
 reversion. fetch preserves the original bytes so the pristine baseline is a byte-exact restore.

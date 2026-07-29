@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Run the jinni as a process: `python -m jinni <socket-path>`.
 
 The daemon spawns this as its parented child (ADR-0037). The jinni loads the device adapter, does

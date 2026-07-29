@@ -78,3 +78,21 @@ build and signing of any published artifact is done by CI, not by hand.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [CLAUDE.md](CLAUDE.md) for the rules a
 change here must follow (the daemon/jinni boundary, RULE ZERO on em-dash and en-dash, identifiers that
 carry domain meaning, and the rest). To report a security issue, see [SECURITY.md](SECURITY.md).
+
+## Licence
+
+Copyright (C) 2026 unlucio and the Bespok3d contributors
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+Affero General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero
+General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with this program. If
+not, see <https://www.gnu.org/licenses/>. The full text is in [LICENSE](LICENSE).
+
+Bespok3d is a project of the Bespok3d Organisation, which is not a legal entity. Copyright is held by
+the individual authors named above.

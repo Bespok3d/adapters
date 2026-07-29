@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Render the U1's service shell scripts from the editable templates next to this module.
 
 Two scripts: the SysV init script for a managed plugin service, and the hardened lmd/unisrv control

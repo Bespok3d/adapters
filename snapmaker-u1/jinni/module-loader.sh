@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Kernel-module loader for the Snapmaker U1 (SysV). The jinni fills the __SENTINELS__ per module.
 # Edit this file as the shell script it is; the sentinels are the only thing substituted. Both boot
 # (S99bespok3d) and the daemon drive it through the start/stop interface; load and unload are

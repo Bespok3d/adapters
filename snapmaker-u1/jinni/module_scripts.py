@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Render the U1's kernel-module loader script from the editable template next to this module.
 
 The loader is a real shell file (module-loader.sh) edited as shell, never as python strings; the

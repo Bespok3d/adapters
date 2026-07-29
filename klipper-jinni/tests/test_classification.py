@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni classifies its own service commands (ADR-0037 proof slice).
 
 This is where the daemon's old `service_actions` predicates moved: the jinni that produced a restart

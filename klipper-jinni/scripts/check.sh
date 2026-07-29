@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # The klipper-jinni app's own gate. klipper-jinni is a separate app from the daemon: the shared
 # klipper jinni runtime that device adapters (snapmaker-u1, future Voron) extend. Its toolchain is
 # the shared one, so this repo no longer needs the daemon's venv built to be green. It does still

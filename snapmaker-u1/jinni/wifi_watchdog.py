@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The U1's wifi self-heal watchdog.
 
 A background loop that restores the stock wifi credentials and bounces wlan0 whenever the interface

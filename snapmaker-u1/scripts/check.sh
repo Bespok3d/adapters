@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # The snapmaker-u1 adapter's own gate. The adapter is one repo with two halves: a TypeScript client
 # and a Python jinni. The Python half runs on the shared toolchain, so it no longer needs the
 # daemon's venv built. The TS half is written against @adapter-sdk, which IS the app's adapter

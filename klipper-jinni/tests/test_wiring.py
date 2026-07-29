@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The wiring facet (ADR-0037): the jinni symlinks placed files into the system, preserves any stock
 original so teardown restores the firmware exactly, and records each reversion as data.
 

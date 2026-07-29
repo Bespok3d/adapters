@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Moonraker API-socket client: pure framing/id-matching + a live round-trip over a fake socket."""
 import json
 import os

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Read the kernel's out-of-memory evidence: whether the OOM killer fired and what it took.
 
 Generic across linux: the cumulative kill count is /proc/vmstat's `oom_kill` line, the most recent

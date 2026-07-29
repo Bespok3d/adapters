@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni reads its OWN service logs and pulls failure signals out of them (ADR-0037).
 
 This is where the daemon's old log parsing moved: which config section / import / file a failure

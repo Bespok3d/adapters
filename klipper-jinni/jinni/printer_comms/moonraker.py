@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Talk to Moonraker over its Unix domain socket (comms/moonraker.sock).
 
 Local IPC that never needs auth (Moonraker's docs say so, and OctoEverywhere's client relies on it),

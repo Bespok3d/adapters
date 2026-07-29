@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni package is split by concern: the base Jinni interface is composed from one facet module
 per concern, each symbol lives in its named room, and the package facade re-exports what the daemon
 imports."""

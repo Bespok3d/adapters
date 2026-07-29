@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The klipper printer jinni reads live print state and names what a print blocks (ADR-0037).
 
 `print_active()` reads Klipper's print_stats over its auth-free API socket first (so it survives the

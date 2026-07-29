@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The bespok3d-into-klipper integration teardown facet (ADR-0037).
 
 Enrollment writes the `[include bespok3d/...]` lines into the printer's own config CLIENT-side, and

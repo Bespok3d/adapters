@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The device-file read/write facet of the jinni (ADR-0037).
 
 The patch path: the daemon FETCHES a stock file (the pristine baseline), patches a copy in its own

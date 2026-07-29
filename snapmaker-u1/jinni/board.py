@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Board-class detection for the U1: the standard board vs the neutered 512MB variant.
 
 Total RAM is the signal: the constrained board falls below the threshold, the standard board sits

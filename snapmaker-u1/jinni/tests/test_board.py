@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Board-class detection from /proc/meminfo: the 512MB board reads `constrained`, a 1GB+ board reads
 `standard`, and an unreadable meminfo reads `unknown` rather than mis-claiming a class."""
 from pathlib import Path

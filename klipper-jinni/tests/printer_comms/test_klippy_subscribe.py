@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The Klipper print_stats subscription: pure framing/parsing, plus a live push over a fake sock."""
 import asyncio
 import json

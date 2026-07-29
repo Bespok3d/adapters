@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Hardened lmd/unisrv control for the Snapmaker U1, owned by the jinni and placed at
 # $BESPOK3D/etc/init.d/lmdctl by the daemon. The compositor `unisrv` (spawned by /usr/bin/lmd)
 # crashes on SIGTERM (its graceful shutdown hits std::terminate -> 210MB core, and can wedge the

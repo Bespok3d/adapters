@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Managed-service init script template for the Snapmaker U1 (SysV / start-stop-daemon).
 # The jinni fills the __SENTINELS__ per service before placing the script. Edit this file as the
 # shell script it is; the sentinels are the only thing substituted.

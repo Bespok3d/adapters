@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The bespok3d-into-klipper integration unwire (ADR-0037): remove the include lines from the
 printer's own config, prune the bespok3d include dirs, and self-heal dead include links.
 

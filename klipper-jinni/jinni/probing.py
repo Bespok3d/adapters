@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The live-probing facet of the jinni: read the running device and judge what may be done now.
 
 Reachability (`port_listening`/`service_get`) and the live print read (`print_active`) delegate to
