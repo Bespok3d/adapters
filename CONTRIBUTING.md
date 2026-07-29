@@ -13,6 +13,12 @@ non-negotiables (RULE ZERO: no em-dash or en-dash; every identifier carries doma
 beyond one level is suspicious; rule of three), and the working procedure. If you use an AI assistant,
 point it at that file; `AGENTS.md` sends non-Claude tools there too.
 
+[doc/story-obligations.md](doc/story-obligations.md) is where the work is: it lists what an adapter
+owes the user stories. Read it before you propose something new, because the idea you have may
+already be a story with a shape, and delivering an obligation the code does not meet yet helps more
+than adding another point. The page says what is owed, not what is already done, so check a row
+against the code before you pick it up.
+
 ## Develop
 
 Each adapter gates on its own. Run the gate of the adapter you changed:
