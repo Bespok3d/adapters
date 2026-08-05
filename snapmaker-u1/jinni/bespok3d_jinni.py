@@ -33,6 +33,7 @@ _PATHS_FILE = Path(__file__).resolve().parent / "paths.json"
 _VERSION_FILE = Path(__file__).resolve().parent / "version.json"
 _DEVICE_FACT_TIMEOUT_S = 3
 
+
 # The U1's core-service restart commands, keyed by the generic hook a manifest declares. These are
 # the device facts the daemon must not name itself; it asks the jinni via restart_command().
 _RESTART_COMMANDS = {

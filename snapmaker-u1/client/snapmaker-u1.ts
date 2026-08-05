@@ -11,6 +11,7 @@ import { JINNI_VERSION } from './version'
 // The adapter's public surface, consumed by the app's main process (patchS90lmd) and the adapter
 // tests, re-exported from the concern modules so importers keep a single entry point.
 export { patchNginx, patchS90lmd } from './stock-patches'
+export { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from './klipper-includes'
 export { daemonFiles } from './deploy'
 export { isPrinting } from './print-state'
 export { writeLayerActive, verifyEnrolled } from './overlay'
@@ -19,7 +20,7 @@ registerAdapter({
   id: 'snapmaker-u1',
   title: 'Snapmaker U1',
   vendor: 'Snapmaker',
-  version: '1.0.0',
+  version: '1.1.0',
   jinniVersion: JINNI_VERSION,
   description:
     'Stock firmware adapter for the Snapmaker U1. Connects via SSH as root and installs bespok3d on top of the OEM system without modifying firmware.',

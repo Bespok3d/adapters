@@ -80,3 +80,60 @@ def test_prune_dead_config_links_removes_only_broken_links(tmp_path: Path) -> No
     assert removed == [str(dead_link)]
     assert not dead_link.is_symlink()
     assert (config_dir / "live.cfg").is_symlink()
+
+
+def test_restore_includes_puts_our_lines_above_the_save_config_block(tmp_path: Path) -> None:
+    printer_cfg = tmp_path / "printer.cfg"
+    moonraker_cfg = tmp_path / "moonraker.conf"
+    printer_cfg.write_text(
+        "[printer]\nfoo: 1\n#*# <---------------------- SAVE_CONFIG\n#*# [bed_mesh]\n"
+    )
+    moonraker_cfg.write_text("[server]\n")
+    jinni = _Jinni({"PRINTER_CFG": str(printer_cfg), "MOONRAKER_CFG": str(moonraker_cfg)})
+
+    jinni.restore_bespok3d_includes()
+
+    restored = printer_cfg.read_text()
+    assert "[include bespok3d/klipper/*.cfg]" in restored
+    assert restored.index("bespok3d/klipper") < restored.index("SAVE_CONFIG")
+    assert "[include bespok3d/moonraker/*.cfg]" in moonraker_cfg.read_text()
+
+
+def test_restore_includes_is_idempotent(tmp_path: Path) -> None:
+    printer_cfg = tmp_path / "printer.cfg"
+    moonraker_cfg = tmp_path / "moonraker.conf"
+    printer_cfg.write_text("[include bespok3d/klipper/*.cfg]\n[printer]\n")
+    moonraker_cfg.write_text("[include bespok3d/moonraker/*.cfg]\n[server]\n")
+    jinni = _Jinni({"PRINTER_CFG": str(printer_cfg), "MOONRAKER_CFG": str(moonraker_cfg)})
+
+    jinni.restore_bespok3d_includes()
+    jinni.restore_bespok3d_includes()
+
+    assert printer_cfg.read_text().count("bespok3d/klipper") == 1
+    assert moonraker_cfg.read_text().count("bespok3d/moonraker") == 1
+
+
+def test_switching_off_and_back_on_never_grows_the_config(tmp_path: Path) -> None:
+    """Switching bespok3d off and on again leaves the printer's config byte for byte as it was.
+
+    The blank line above the include used to be added rather than written, so every round trip
+    left one more empty line behind and the include drifted down the file.
+    """
+    printer_cfg = tmp_path / "printer.cfg"
+    moonraker_cfg = tmp_path / "moonraker.conf"
+    printer_cfg.write_text(
+        "[printer]\nfoo: 1\n\n#*# <---------------------- SAVE_CONFIG\n#*# [bed_mesh]\n"
+    )
+    moonraker_cfg.write_text("[server]\n")
+    jinni = _Jinni({"PRINTER_CFG": str(printer_cfg), "MOONRAKER_CFG": str(moonraker_cfg)})
+
+    jinni.restore_bespok3d_includes()
+    after_first_switch_on = (printer_cfg.read_text(), moonraker_cfg.read_text())
+    jinni.remove_bespok3d_includes()
+    jinni.restore_bespok3d_includes()
+    jinni.remove_bespok3d_includes()
+    jinni.restore_bespok3d_includes()
+
+    assert (printer_cfg.read_text(), moonraker_cfg.read_text()) == after_first_switch_on
+    assert "\n\n\n" not in printer_cfg.read_text()
+    assert "\n\n\n" not in moonraker_cfg.read_text()

@@ -36,7 +36,8 @@ _READ_TIMEOUT_S = 5.0
 # other verb is a read and answers inline. The set grows as actuation verbs land (fetch).
 ACTUATION_VERBS = frozenset({
     "run_actions", "wire", "unwire", "write_files",
-    "prune_dead_config_links", "remove_bespok3d_includes", "prune_bespok3d_config_dir",
+    "prune_dead_config_links", "remove_bespok3d_includes", "restore_bespok3d_includes",
+    "prune_bespok3d_config_dir",
 })
 _actuation_queue = asyncio.Lock()
 

@@ -226,3 +226,11 @@ def test_startup_control_scripts_render_the_lmdctl_script() -> None:
     assert "do_restart()" in script
     assert "restart) do_restart" in script
     assert "re-bouncing" in script
+
+
+def test_a_screen_that_went_to_sleep_is_never_reported_as_needing_a_power_cycle() -> None:
+    """The U1's screen blanks itself after a few idle minutes, and the kernel prints its display
+    warnings on that ordinary blank and again on the ordinary wake. Reading those as a dead screen
+    accused a perfectly healthy printer every single time it dimmed, so the U1 reports nothing to
+    power cycle until there is a read that can tell a sleeping screen from a dead one."""
+    assert SnapmakerU1Jinni().reboot_required() == []

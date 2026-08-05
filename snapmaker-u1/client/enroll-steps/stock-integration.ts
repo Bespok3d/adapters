@@ -7,6 +7,7 @@ import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { BESPOK3D, PRINTER_DATA, daemonSrcPath } from '../paths'
 import { patchNginx, patchS90lmd } from '../stock-patches'
+import { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from '../klipper-includes'
 
 // Where bespok3d meets the stock Snapmaker system: its boot sequence, its web server and its Klipper
 // and Moonraker configs. Every edit here is minimal and additive, so a printer keeps working exactly
@@ -68,22 +69,6 @@ export async function stepKlipperIncludes(ssh: SshSession, ctx: EnrollContext): 
     chmod -R 755 ${PRINTER_DATA}/config/bespok3d
   `.trim()
   )
-  await ssh.exec(
-    `grep -q 'bespok3d/klipper' ${PRINTER_DATA}/config/printer.cfg 2>/dev/null || python3 -c "
-content = open('${PRINTER_DATA}/config/printer.cfg').read()
-marker = '#*# <---------------------- SAVE_CONFIG'
-line = '\\n[include bespok3d/klipper/*.cfg]\\n'
-idx = content.find(marker)
-open('${PRINTER_DATA}/config/printer.cfg', 'w').write(content[:idx]+line+content[idx:] if idx>=0 else content+line)
-"`
-  )
-  await ssh.exec(
-    `grep -q 'bespok3d/moonraker' ${PRINTER_DATA}/config/moonraker.conf 2>/dev/null || python3 -c "
-content = open('${PRINTER_DATA}/config/moonraker.conf').read()
-marker = '#*# <---------------------- SAVE_CONFIG'
-line = '\\n[include bespok3d/moonraker/*.cfg]\\n'
-idx = content.find(marker)
-open('${PRINTER_DATA}/config/moonraker.conf', 'w').write(content[:idx]+line+content[idx:] if idx>=0 else content+line)
-"`
-  )
+  await ssh.exec(bespok3dIncludeCommand(`${PRINTER_DATA}/config/printer.cfg`, KLIPPER_INCLUDE))
+  await ssh.exec(bespok3dIncludeCommand(`${PRINTER_DATA}/config/moonraker.conf`, MOONRAKER_INCLUDE))
 }

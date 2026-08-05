@@ -22,11 +22,13 @@ from .layout import Layout
 from .oom_probe import OomProbe
 from .probing import Probing
 from .realization import Realization
+from .reboot_needs import RebootNeeds
 from .wiring import Wiring
 
 
 class Jinni(
-    Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Facts, Probing, OomProbe, ABC,
+    Layout, Realization, Actuation, Wiring, DeviceFiles, Integration, Facts, Probing, OomProbe,
+    RebootNeeds, ABC,
 ):
     id: str = "generic"
 
