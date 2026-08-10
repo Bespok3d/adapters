@@ -17,7 +17,7 @@ name: build-and-release
 # documents this repo cannot do standalone yet. The jinni's tests need one sibling only, the daemon's
 # protocol package, which this workflow fetches at a pinned commit.
 #
-# Tag and manual dispatch only. A pull request must never reach this workflow: it holds the signing key,
+# A version tag is what releases. A pull request must never reach this workflow: it holds the signing key,
 # and PR code is not pinned code. The PR-time checks live in pr-gate.yml and pr-build.yml, which hold no
 # secret at all. The shared workflow-pinning guard fails the gate if a pull_request trigger reappears.
 on:
