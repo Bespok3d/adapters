@@ -9,18 +9,18 @@ name: pr-gate
 # lib_bespok3d is public, so the submodule fetch needs no secret. The main checkout keeps
 # persist-credentials off, so GITHUB_TOKEN is not left in git config for the fetch to reuse.
 #
-# This gate runs the SHARED tooling only, not each adapter's full scripts/check.sh. Those scripts are
-# coupled to the whole workspace: klipper-jinni resolves the daemon's protocol package and drives the
-# daemon core over a socket, and snapmaker-u1's client half type-checks, lints and tests against the app's
-# @adapter-sdk with the app's node toolchain. None of daemon, klipper-jinni's sibling or the app are on a
-# single-repo runner, so the coupled suite cannot run here yet (Stage 2 finding F2). Making check.sh
-# CI-self-contained (fetch the siblings, build the app) is a separate effort; this gate delivers the
-# shared-tooling reach in the meantime and is honestly green rather than a forced pass.
+# This gate runs the shared tooling plus the snapmaker-u1 jinni's own pytest suite, not each adapter's
+# full scripts/check.sh. Those scripts are coupled to the whole workspace: klipper-jinni drives the daemon
+# core over a socket, and snapmaker-u1's client half type-checks, lints and tests against the app's
+# @adapter-sdk with the app's node toolchain. Neither the app nor a running daemon is on a single-repo
+# runner, so the coupled suite cannot run here yet (Stage 2 finding F2). Making check.sh CI-self-contained
+# (build the app) is a separate effort; this gate delivers the shared-tooling and jinni-test reach in the
+# meantime and is honestly green rather than a forced pass.
 #
 # This is a check-only run: it never builds, packs, signs or publishes, so no signing key is in scope.
-# It holds no secret at all, which is what lets a pull request from a fork pass it. It is deliberately
-# NOT named pr-build.yml: that name is reserved for a b3-builder preview build, which the pinning guard
-# forbids from holding any secret at all.
+# It holds no secret at all, which is what lets a pull request from a fork pass it. The PR-time pack proof
+# is pr-build.yml, which the pinning guard knows by name and forbids from holding any secret; the signing
+# key lives only in release.yml, which only a version tag can start.
 on:
   pull_request:
   push:
@@ -48,4 +48,27 @@ jobs:
           em_dash_check .
           workflow_pinning_check .
           shellcheck_repo .
+          gate_summary
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The jinni imports the daemon's protocol package, which is a workspace sibling and not a
+      # dependency this repo can install. Fetched after the scans above so they never walk it, and
+      # pinned to a commit so a push to the daemon cannot change what this gate executes.
+      - uses: actions/checkout@v4
+        with:
+          repository: Bespok3d/daemon
+          ref: bb45ed7e88220c91ed67e154ca882ae581df5cb4
+          path: daemon
+          persist-credentials: false
+
+      - name: Jinni tests (snapmaker-u1)
+        env:
+          B3D_DAEMON_DIR: ${{ github.workspace }}/daemon
+        run: |
+          . lib_bespok3d/tooling/gate-lib.sh
+          b3d_python_tools
+          run_check "pytest (jinni)" pytest_in_dir "$(pwd)" snapmaker-u1/jinni/tests
           gate_summary
