@@ -1,0 +1,153 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: build-and-release
+
+# On a tag matching jinni-snapmaker-u1-v*: gate, stage the jinni's two source trees into one flat
+# package (dist/package, unit: plugin per jinni-package-spec.md), then hand it to the one org-wide
+# build Action (b3-builder) that packs, stamps the publisher and SIGNS it, same as every plugin.
+#
+# Tag-triggered, not push-to-main like the daemon's: this repo carries more than one adapter, so a
+# push-to-main trigger cannot tell which one changed without inventing path-based fan-out. A tag
+# names exactly which adapter's jinni is releasing, and lets this repo release several adapters
+# without their tags colliding.
+#
+# The gate step runs the shared tooling (em-dash, workflow-pinning, shellcheck) and the jinni's own
+# pytest suite, not the full multi-adapter scripts/check.sh: that suite needs the daemon, the sibling
+# klipper-jinni checkout via MYPYPATH, and the app's node toolchain on the same runner, which
+# pr-gate.yml already documents this repo cannot do standalone yet. The jinni's own tests need none
+# of those siblings.
+on:
+  push:
+    tags:
+      - 'jinni-snapmaker-u1-v*'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Fetch the shared-tooling submodule
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Jinni gate (shared tooling + pytest)
+        run: |
+          . lib_bespok3d/tooling/gate-lib.sh
+          em_dash_check .
+          workflow_pinning_check .
+          shellcheck_repo .
+          b3d_python_tools
+          run_check "pytest (jinni)" pytest_in_dir "$(pwd)" snapmaker-u1/jinni/tests
+          gate_summary
+
+      # An absent signing key makes b3-builder publish an unsigned .b3 while the run stays green, and
+      # a printer would then take the jinni on trust with nothing to verify. Refuse the release instead.
+      - name: Refuse to release without the signing key
+        env:
+          REGISTRY_SIGNING_KEY: ${{ secrets.REGISTRY_SIGNING_KEY }}
+        run: |
+          [ -n "$REGISTRY_SIGNING_KEY" ] || {
+            echo "REGISTRY_SIGNING_KEY is not set on this repo; refusing to publish an unsigned jinni" >&2
+            exit 1
+          }
+
+      - name: Stage the jinni as a flat plugin source dir
+        run: sh scripts/stage-package.sh
+
+      - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
+        with:
+          unit: plugin
+          source: dist/package
+          out: dist
+          signing-key: ${{ secrets.REGISTRY_SIGNING_KEY }}
+          # No third-party dependency: the jinni imports only the standard library, its own siblings,
+          # protocol (already shipped by the daemon package) and jinni (which this package now ships
+          # itself). jinni-package-spec.md read this off the imports rather than assuming it.
+          bake: 'false'
+          atom-repo: ${{ github.repository }}
+
+      # The signature is the whole point of routing through b3-builder, so prove it landed rather than
+      # trust a green run: a packed manifest with no detached signature, or one still carrying the
+      # source manifest's PLACEHOLDER publisher, means the release is not verifiable.
+      - name: Verify the packed jinni is signed and stamped
+        run: |
+          name=$(jq -r '.name' dist/package/manifest.json)
+          version=$(jq -r '.version' dist/package/manifest.json)
+          package="dist/${name}-${version}.b3"
+          unzip -l "$package" | grep -q 'manifest.json.sig' || {
+            echo "$package carries no manifest.json.sig" >&2; exit 1; }
+          publisher=$(unzip -p "$package" manifest.json | jq -r '.publisher')
+          case "$publisher" in
+            [Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|null|"")
+              echo "$package was not stamped with a real publisher (got '${publisher}')" >&2; exit 1 ;;
+          esac
+          echo "signed and stamped: publisher ${publisher}"
+
+      # b3-builder releases the .b3 itself. The atom rides along on the same release because the app
+      # reads it to learn a newer jinni exists.
+      - name: Attach the index atom to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=$(jq -r '.name' dist/package/manifest.json)
+          version=$(jq -r '.version' dist/package/manifest.json)
+          gh release upload "${name}-v${version}" "dist/${name}.atom.json" --clobber
+
+      - uses: Bespok3d/main-index/.github/actions/register-atoms@3d4fa2adb4f39aa22b7112ff26fd9522db7b4827  # main @ 2026-07-26
+        with:
+          # Per-repo Actions secret today (GitHub Free cannot org-secret private repos); becomes ONE org
+          # secret every repo inherits when the repos go public.
+          token: ${{ secrets.MAIN_INDEX_TOKEN }}
+
+  build-preview:
+    # The adapters repo has never had a build check. This proves the jinni packs and signs on every
+    # PR, with nothing published: no release, no atom upload, no index registration.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Fetch the shared-tooling submodule
+        run: git submodule update --init --recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Jinni gate (shared tooling + pytest)
+        run: |
+          . lib_bespok3d/tooling/gate-lib.sh
+          em_dash_check .
+          workflow_pinning_check .
+          shellcheck_repo .
+          b3d_python_tools
+          run_check "pytest (jinni)" pytest_in_dir "$(pwd)" snapmaker-u1/jinni/tests
+          gate_summary
+
+      - name: Stage the jinni as a flat plugin source dir
+        run: sh scripts/stage-package.sh
+
+      - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
+        with:
+          unit: plugin
+          source: dist/package
+          out: dist
+          signing-key: ${{ secrets.REGISTRY_SIGNING_KEY }}
+          bake: 'false'
+          atom-repo: ${{ github.repository }}
+          publish: 'false'

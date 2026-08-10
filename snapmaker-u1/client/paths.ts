@@ -1,47 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { readFileSync } from 'fs'
-import { join } from 'path'
-
-import { app } from 'electron'
-
-import { devSourcePath } from '@adapter-sdk'
-
-// This adapter's jinni (its daemon-side half) is shipped with the adapter and installed next to the
-// generic daemon, which loads it as the top-level `bespok3d_jinni` module.
-export function adapterJinniPath(): string {
-  const devOverride = devSourcePath(join('adapters', 'snapmaker-u1', 'jinni'))
-  if (devOverride) return devOverride
-
-  return app.isPackaged
-    ? join(process.resourcesPath, 'adapters', 'snapmaker-u1', 'jinni')
-    : join(app.getAppPath(), '..', 'adapters', 'snapmaker-u1', 'jinni')
-}
-
-// The shared klipper jinni runtime (the `jinni` package: base Jinni, KlipperPrinterJinni, the facets,
-// service.py / __main__.py). It lives in its own repo since the ADR-0037 split, but on the printer it
-// co-locates with the daemon: the device jinni `bespok3d_jinni` imports `from jinni import ...` and the
-// daemon spawns `python -m jinni`, so this package must be deployed next to the daemon (DAEMON_BASE/jinni).
-export function klipperJinniPath(): string {
-  const devOverride = devSourcePath(join('adapters', 'klipper-jinni', 'jinni'))
-  if (devOverride) return devOverride
-
-  return app.isPackaged
-    ? join(process.resourcesPath, 'adapters', 'klipper-jinni', 'jinni')
-    : join(app.getAppPath(), '..', 'adapters', 'klipper-jinni', 'jinni')
-}
-
-export function daemonSrcPath(): string {
-  const devOverride = devSourcePath('daemon')
-  if (devOverride) return devOverride
-
-  return app.isPackaged
-    ? join(process.resourcesPath, 'daemon')
-    : join(app.getAppPath(), '..', 'daemon')
-}
+import { jinniPayloadFile } from './jinni-payload'
 
 function loadAdapterPaths(): Record<string, string> {
-  return JSON.parse(readFileSync(join(adapterJinniPath(), 'paths.json'), 'utf-8'))
+  return JSON.parse(jinniPayloadFile('paths.json'))
 }
 
 // The U1 path variables live in ONE place: paths.json in the jinni dir. The device-side jinni reads
@@ -50,6 +12,8 @@ function loadAdapterPaths(): Record<string, string> {
 export const PATHS: Record<string, string> = loadAdapterPaths()
 export const BESPOK3D = PATHS.BESPOK3D
 export const PRINTER_DATA = PATHS.PRINTER_DATA
+// The daemon and both jinni halves co-locate here: the daemon spawns `python -m jinni` and the device
+// jinni imports `from jinni import ...`, so the packages sit side by side under one root.
 export const DAEMON_BASE = `${BESPOK3D}/var/lib/daemon`
 
 // On-printer bespok3d layout version. Baseline for future system migrations that handle breaking

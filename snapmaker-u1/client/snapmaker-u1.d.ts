@@ -2,6 +2,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 export { patchNginx, patchS90lmd } from './stock-patches';
 export { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from './klipper-includes';
-export { daemonFiles } from './deploy';
 export { isPrinting } from './print-state';
 export { writeLayerActive, verifyEnrolled } from './overlay';
