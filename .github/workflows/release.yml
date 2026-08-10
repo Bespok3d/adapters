@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: build-and-release
 
-# On a tag matching jinni-snapmaker-u1-v*: gate, stage the jinni's two source trees into one flat
-# package (dist/package, unit: plugin per jinni-package-spec.md), then hand it to the one org-wide
+# On a tag matching jinni-snapmaker-u1-v*: gate, stage the jinni's two source trees into one package
+# dir (dist/package/<name>, per jinni-package-spec.md), then hand it to the one org-wide
 # build Action (b3-builder) that packs, stamps the publisher and SIGNS it, same as every plugin.
 #
 # Tag-triggered, not push-to-main like the daemon's: this repo carries more than one adapter, so a
@@ -83,12 +83,16 @@ jobs:
             exit 1
           }
 
-      - name: Stage the jinni as a flat plugin source dir
+      - name: Stage the jinni as a plugin source dir
         run: sh scripts/stage-package.sh
 
       - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
         with:
-          unit: plugin
+          # repo, not plugin, and the staging script puts the jinni in a named dir under dist/package/
+          # to match: only the repo unit releases and finalizes each atom's download URL. Naming no
+          # list makes this an atoms-only repo, exactly like the daemon's, so nothing assembles a
+          # second sub-list; the atom is registered by the step at the end of this job.
+          unit: repo
           source: dist/package
           out: dist
           signing-key: ${{ secrets.REGISTRY_SIGNING_KEY }}
@@ -103,8 +107,8 @@ jobs:
       # source manifest's PLACEHOLDER publisher, means the release is not verifiable.
       - name: Verify the packed jinni is signed and stamped
         run: |
-          name=$(jq -r '.name' dist/package/manifest.json)
-          version=$(jq -r '.version' dist/package/manifest.json)
+          name=$(jq -r '.name' snapmaker-u1/jinni/manifest.json)
+          version=$(jq -r '.version' snapmaker-u1/jinni/manifest.json)
           package="dist/${name}-${version}.b3"
           unzip -l "$package" | grep -q 'manifest.json.sig' || {
             echo "$package carries no manifest.json.sig" >&2; exit 1; }
@@ -121,8 +125,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          name=$(jq -r '.name' dist/package/manifest.json)
-          version=$(jq -r '.version' dist/package/manifest.json)
+          name=$(jq -r '.name' snapmaker-u1/jinni/manifest.json)
+          version=$(jq -r '.version' snapmaker-u1/jinni/manifest.json)
           gh release upload "${name}-v${version}" "dist/${name}.atom.json" --clobber
 
       - uses: Bespok3d/main-index/.github/actions/register-atoms@3d4fa2adb4f39aa22b7112ff26fd9522db7b4827  # main @ 2026-07-26
