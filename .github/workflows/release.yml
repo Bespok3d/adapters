@@ -12,15 +12,18 @@ name: build-and-release
 # without their tags colliding.
 #
 # The gate step runs the shared tooling (em-dash, workflow-pinning, shellcheck) and the jinni's own
-# pytest suite, not the full multi-adapter scripts/check.sh: that suite needs the daemon, the sibling
-# klipper-jinni checkout via MYPYPATH, and the app's node toolchain on the same runner, which
-# pr-gate.yml already documents this repo cannot do standalone yet. The jinni's own tests need none
-# of those siblings.
+# pytest suite, not the full multi-adapter scripts/check.sh: that suite needs the sibling klipper-jinni
+# checkout via MYPYPATH and the app's node toolchain on the same runner, which pr-gate.yml already
+# documents this repo cannot do standalone yet. The jinni's tests need one sibling only, the daemon's
+# protocol package, which this workflow fetches at a pinned commit.
+#
+# Tag and manual dispatch only. A pull request must never reach this workflow: it holds the signing key,
+# and PR code is not pinned code. The PR-time checks live in pr-gate.yml and pr-build.yml, which hold no
+# secret at all. The shared workflow-pinning guard fails the gate if a pull_request trigger reappears.
 on:
   push:
     tags:
       - 'jinni-snapmaker-u1-v*'
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -42,12 +45,29 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Jinni gate (shared tooling + pytest)
+      - name: Shared tooling (em-dash, workflow-pinning, shellcheck)
         run: |
           . lib_bespok3d/tooling/gate-lib.sh
           em_dash_check .
           workflow_pinning_check .
           shellcheck_repo .
+          gate_summary
+
+      # The jinni imports the daemon's protocol package, which is a workspace sibling and not a
+      # dependency this repo can install. Fetched after the scans above so they never walk it, and
+      # pinned to a commit so a push to the daemon cannot change what this release runs.
+      - uses: actions/checkout@v4
+        with:
+          repository: Bespok3d/daemon
+          ref: bb45ed7e88220c91ed67e154ca882ae581df5cb4
+          path: daemon
+          persist-credentials: false
+
+      - name: Jinni tests
+        env:
+          B3D_DAEMON_DIR: ${{ github.workspace }}/daemon
+        run: |
+          . lib_bespok3d/tooling/gate-lib.sh
           b3d_python_tools
           run_check "pytest (jinni)" pytest_in_dir "$(pwd)" snapmaker-u1/jinni/tests
           gate_summary
@@ -110,44 +130,3 @@ jobs:
           # Per-repo Actions secret today (GitHub Free cannot org-secret private repos); becomes ONE org
           # secret every repo inherits when the repos go public.
           token: ${{ secrets.MAIN_INDEX_TOKEN }}
-
-  build-preview:
-    # The adapters repo has never had a build check. This proves the jinni packs and signs on every
-    # PR, with nothing published: no release, no atom upload, no index registration.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-          persist-credentials: false
-
-      - name: Fetch the shared-tooling submodule
-        run: git submodule update --init --recursive
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Jinni gate (shared tooling + pytest)
-        run: |
-          . lib_bespok3d/tooling/gate-lib.sh
-          em_dash_check .
-          workflow_pinning_check .
-          shellcheck_repo .
-          b3d_python_tools
-          run_check "pytest (jinni)" pytest_in_dir "$(pwd)" snapmaker-u1/jinni/tests
-          gate_summary
-
-      - name: Stage the jinni as a flat plugin source dir
-        run: sh scripts/stage-package.sh
-
-      - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
-        with:
-          unit: plugin
-          source: dist/package
-          out: dist
-          signing-key: ${{ secrets.REGISTRY_SIGNING_KEY }}
-          bake: 'false'
-          atom-repo: ${{ github.repository }}
-          publish: 'false'
