@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
 }))
 
 import type { SshSession } from '@adapter-sdk'
-import { patchNginx, patchS90lmd, daemonFiles, isPrinting, writeLayerActive, verifyEnrolled } from './snapmaker-u1'
+import { patchNginx, patchS90lmd, isPrinting, writeLayerActive, verifyEnrolled } from './snapmaker-u1'
 
 // A fake SSH session whose exec is dispatched by command substring. Returning the sentinel
 // '__throw__' makes exec reject, the way a non-zero `test` exit does on the real device.
@@ -35,8 +35,6 @@ const VERSION_JSON = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../jinni/version.json'), 'utf-8')
 )
 
-const DAEMON_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../daemon')
-
 const DAEMON_STARTUP_SCRIPT = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '../../../daemon/s10bespok3d-daemon'),
   'utf-8'
@@ -45,45 +43,6 @@ const DAEMON_STARTUP_SCRIPT = readFileSync(
 const SAMPLE_NGINX = ['server {', '    listen 80;', '    location / { }', '}'].join('\n')
 
 const SAMPLE_INIT_SCRIPT = ['#!/bin/sh', '', 'start-stop-daemon -S -b -x /usr/bin/lmd'].join('\n')
-
-describe('daemonFiles deploy discovery', () => {
-  const files = daemonFiles(DAEMON_DIR)
-
-  it('discovers the whole daemon module tree, so a new module deploys automatically', () => {
-    expect(files).toContain('daemon.py')
-    expect(files).toContain('core/intent.py')
-    // A nested package module: proves discovery walks subpackages (core/packages/ since the refactor
-    // split the old core/packages.py into a package directory).
-    expect(files).toContain('core/packages/installer.py')
-  })
-
-  it('ships only python modules, skipping tests, the venv, caches, and wheels', () => {
-    expect(files.every((file) => file.endsWith('.py'))).toBe(true)
-    expect(files.some((file) => file.startsWith('tests/'))).toBe(false)
-    expect(files.some((file) => file.includes('wheels/'))).toBe(false)
-  })
-})
-
-describe('klipper jinni runtime deploy discovery (ADR-0037)', () => {
-  // The shared `jinni` package lives in its own repo since the split, but the daemon spawns
-  // `python -m jinni` and the device jinni imports `from jinni import ...`, so it MUST deploy next to
-  // the daemon. This guards that the whole runtime (service entrypoint + tiers + comms) is discovered.
-  const KLIPPER_JINNI_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../klipper-jinni/jinni')
-  const files = daemonFiles(KLIPPER_JINNI_DIR)
-
-  it('discovers the jinni service entrypoint, the tiers, and the printer-comms subpackage', () => {
-    expect(files).toContain('__main__.py')
-    expect(files).toContain('service.py')
-    expect(files).toContain('base.py')
-    expect(files).toContain('klipper.py')
-    expect(files).toContain('printer_comms/klippy.py')
-  })
-
-  it('ships only python modules, skipping tests and caches', () => {
-    expect(files.every((file) => file.endsWith('.py'))).toBe(true)
-    expect(files.some((file) => file.startsWith('tests/'))).toBe(false)
-  })
-})
 
 describe('writeLayerActive (the /oem/.debug overlay flag)', () => {
   it('is true when /oem/.debug is present', async () => {

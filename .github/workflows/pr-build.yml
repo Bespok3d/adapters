@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: pr-build
+
+# Every pull request proves the jinni still packs: stage its two source trees into one flat package
+# and hand that to b3-builder, exactly as release.yml does. Nothing is published, no release, no atom
+# upload, no index registration.
+#
+# It holds NO secret, which is the whole point of the split. The signing key stays in release.yml,
+# which only a version tag can start, so PR code never runs with the key in reach. The consequence is
+# that the package this job packs is unsigned: this job proves the pack, never the signature. The
+# shared workflow-pinning guard enforces both halves of that split, and it knows this file by name.
+on:
+  pull_request:
+
+jobs:
+  build-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Stage the jinni as a flat plugin source dir
+        run: sh scripts/stage-package.sh
+
+      - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
+        with:
+          unit: plugin
+          source: dist/package
+          out: dist
+          bake: 'false'
+          atom-repo: ${{ github.repository }}
+          publish: 'false'
