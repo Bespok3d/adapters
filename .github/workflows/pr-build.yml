@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: pr-build
 
-# Every pull request proves the jinni still packs: stage its two source trees into one flat package
-# and hand that to b3-builder, exactly as release.yml does. Nothing is published, no release, no atom
-# upload, no index registration.
+# Every pull request proves the jinni still packs: stage its two source trees into one package dir and
+# hand that to b3-builder, exactly as release.yml does, same unit and same source, so what a pull
+# request proves is what a tag then releases. Nothing is published, no release, no atom upload, no
+# index registration.
 #
 # It holds NO secret, which is the whole point of the split. The signing key stays in release.yml,
 # which only a version tag can start, so PR code never runs with the key in reach. The consequence is
@@ -22,12 +23,12 @@ jobs:
           submodules: false
           persist-credentials: false
 
-      - name: Stage the jinni as a flat plugin source dir
+      - name: Stage the jinni as a plugin source dir
         run: sh scripts/stage-package.sh
 
       - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
         with:
-          unit: plugin
+          unit: repo
           source: dist/package
           out: dist
           bake: 'false'

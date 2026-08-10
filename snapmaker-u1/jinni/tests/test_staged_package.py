@@ -7,11 +7,16 @@ staged output missing either half is a jinni that cannot import itself. This run
 and inspects its real output, not a description of what it should do.
 """
 
+import json
 import subprocess
 from pathlib import Path
 
 ADAPTERS_ROOT = Path(__file__).resolve().parents[3]
 STAGE_DIR = ADAPTERS_ROOT / "dist" / "package"
+PACKAGE_NAME = json.loads(
+    (ADAPTERS_ROOT / "snapmaker-u1" / "jinni" / "manifest.json").read_text()
+)["name"]
+PACKAGE_DIR = STAGE_DIR / PACKAGE_NAME
 
 
 def _stage() -> None:
@@ -33,11 +38,19 @@ def test_staged_package_carries_no_tests_or_caches() -> None:
     ), "__pycache__ must never reach a printer"
 
 
+def test_the_jinni_is_staged_as_a_named_dir_because_that_is_what_releases() -> None:
+    _stage()
+
+    assert (
+        PACKAGE_DIR / "manifest.json"
+    ).is_file(), "b3-builder releases by walking the named dirs under the source dir"
+
+
 def test_staged_package_carries_both_halves() -> None:
     _stage()
-    files_root = STAGE_DIR / "files"
+    files_root = PACKAGE_DIR / "files"
 
-    assert (STAGE_DIR / "manifest.json").is_file()
+    assert (PACKAGE_DIR / "manifest.json").is_file()
     assert (files_root / "bespok3d_jinni.py").is_file(), "the u1 half must be staged under files/"
     assert (
         files_root / "jinni" / "__init__.py"

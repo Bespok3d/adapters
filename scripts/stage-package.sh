@@ -1,10 +1,15 @@
 #!/bin/sh
 # SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Lay the jinni out as a b3-builder plugin source dir (unit: plugin), modelled on
-# daemon/scripts/stage-package.sh: manifest.json at the stage root, the deployed payload under
-# files/. b3-builder's packPlugin only reads files/ and doc/ out of a plugin source dir (and root
+# Lay the jinni out as a b3-builder repo-unit source dir, modelled on daemon/scripts/stage-package.sh:
+# one named plugin dir under dist/package/, holding manifest.json at its root and the deployed payload
+# under files/. b3-builder's packPlugin only reads files/ and doc/ out of a plugin source dir (and root
 # dependency declarations); a payload staged flat at the root is packed as if it did not exist.
+#
+# The named dir is what makes the release happen: b3-builder's Action releases by walking the
+# immediate subdirs of the source dir for a manifest.json. A package staged flat at dist/package/ packs
+# and signs, then releases nothing at all and the run only fails a step later, with no release to
+# attach the index atom to.
 #
 # Within files/, the layout mirrors the printer layout in jinni-package-spec.md: the u1 half does
 # `from jinni import KlipperPrinterJinni`, so the shared runtime is staged as a files/jinni/
@@ -28,11 +33,12 @@ MANIFEST="$U1_JINNI_DIR/manifest.json"
 command -v jq >/dev/null 2>&1 || { echo "ERROR: 'jq' is required." >&2; exit 1; }
 [ -f "$MANIFEST" ] || { echo "ERROR: $MANIFEST not found." >&2; exit 1; }
 
-stage_dir="$REPO_DIR/dist/package"
+package_name="$(jq -r '.name' "$MANIFEST")"
+stage_dir="$REPO_DIR/dist/package/$package_name"
 files_root="$stage_dir/files"
 shared_root="$files_root/jinni"
 
-rm -rf "$stage_dir"
+rm -rf "$REPO_DIR/dist/package"
 mkdir -p "$shared_root"
 cp -p "$MANIFEST" "$stage_dir/manifest.json"
 
