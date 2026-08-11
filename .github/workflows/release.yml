@@ -28,7 +28,6 @@ on:
 
 jobs:
   build-and-release:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -37,6 +36,12 @@ jobs:
         with:
           submodules: false
           persist-credentials: false
+
+      # The Run workflow button stays usable: this step, not a job level `if`, is what decides.
+      # A manual run against a release tag republishes it; a manual run against a branch is refused
+      # here, loudly, instead of skipping the job and reporting success.
+      - name: Refuse a ref that is not a jinni release tag
+        run: sh scripts/tag_version_guard.sh "${{ github.ref_name }}"
 
       - name: Fetch the shared-tooling submodule
         run: git submodule update --init --recursive

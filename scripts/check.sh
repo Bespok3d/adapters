@@ -14,6 +14,17 @@ cd "$REPO_ROOT" || exit 1
 
 FAILED=""
 
+# The detectors that enforce a workspace-wide rule live in one place and are invoked by every repo's
+# gate. See lib_bespok3d/tooling/README.md. This is the only line that knows where they are.
+B3D_TOOLING="${B3D_TOOLING:-$REPO_ROOT/lib_bespok3d/tooling}"
+if [ ! -f "$B3D_TOOLING/release-trigger-detector.mjs" ]; then
+  echo "The shared gate helpers are missing or older than the checks this gate runs:" >&2
+  echo "the lib_bespok3d submodule is not checked out, or is pinned to an older commit." >&2
+  echo "Run this once from the repo root, then try again:" >&2
+  echo "  git submodule sync --recursive && git submodule update --init --recursive" >&2
+  exit 1
+fi
+
 # A submodule is another repo living here for the build's convenience. It carries its own gate, it is
 # checked in its own repo, and its failures are not this repo's to report. lib_bespok3d is the one we
 # have today; the rule is written against .gitmodules so the next one needs no edit here.
@@ -34,6 +45,15 @@ for adapter_gate in "$REPO_ROOT"/*/scripts/check.sh; do
     FAILED="$FAILED $adapter_name"
   fi
 done
+
+# The release workflow lives at the repo root, so no adapter's own gate covers it. A release is
+# published by a version tag and by nothing else, and the Run workflow button reaches the version
+# guard instead of skipping the job.
+echo ""
+echo "=== this repo's release trigger ==="
+if ! node "$B3D_TOOLING/release-trigger-detector.mjs" "$REPO_ROOT"; then
+  FAILED="$FAILED adapters/.github/workflows/release.yml"
+fi
 
 # This script is a gate, so it holds itself to the same bar it holds the adapters to.
 echo ""
