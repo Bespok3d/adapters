@@ -5,6 +5,7 @@ import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { removePackageEntries, uploadPayload } from './package-deploy'
 import { ADAPTER_JINNI_PACKAGE } from './packages'
+import type { ProgressSpan } from './step-progress'
 import { DAEMON_BASE } from './paths'
 
 // Deploying the jinni onto the printer, out of the signed package this build ships with and out of
@@ -13,7 +14,9 @@ import { DAEMON_BASE } from './paths'
 // (`bespok3d_jinni`). The daemon spawns `python -m jinni` and the device jinni imports
 // `from jinni import ...`, so both co-locate next to the daemon under DAEMON_BASE, which is the
 // layout the package already has. Enrollment and the standalone jinni-update op both run this.
-export async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext): Promise<void> {
+// progressSpan is the slice of the bar the jinni owns when it is one phase of a longer step; the
+// standalone jinni update leaves it out, because there the jinni IS the step.
+export async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext, progressSpan?: ProgressSpan): Promise<void> {
   const signedPackage = await openBundledPackage(ADAPTER_JINNI_PACKAGE)
   await removePackageEntries(ssh, DAEMON_BASE, signedPackage.payloadPaths)
   await uploadPayload({
@@ -23,5 +26,6 @@ export async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext): P
     payloadPaths: signedPackage.payloadPaths,
     progressLabel: 'Uploading jinni…',
     onProgress: ctx.onProgress,
+    progressSpan,
   })
 }

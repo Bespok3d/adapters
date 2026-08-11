@@ -26,12 +26,21 @@ const WHEEL_DIR = 'wheels/'
 // An earlier release created this under a misspelled name; a printer carrying it gets it cleared.
 const LEGACY_DIR = `${BESPOK3D}/var/lib/demon`
 
+// How this step's own progress bar is shared out. The two uploads are the bulk of it and the only
+// parts whose size is known before they start, so they own most of the bar and move it a file at a
+// time; the daemon carries far more files than the jinni, hence the split. The tail is one pip run
+// installing the wheels, and nothing here can see inside it, so the bar holds at the last mark until
+// the step finishes rather than inventing movement.
+const DAEMON_UPLOAD_SPAN = { from: 0, to: 0.75 }
+const JINNI_UPLOAD_SPAN = { from: 0.75, to: 0.88 }
+const AUTOSTART_MARK = 0.9
+
 function daemonRuntimePaths(signedPackage: BundledPackage): readonly string[] {
   return signedPackage.payloadPaths.filter((payloadPath) => !INIT_SCRIPTS.includes(payloadPath))
 }
 
 async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signedPackage: BundledPackage): Promise<void> {
-  ctx.onProgress?.('Installing autostart script…')
+  ctx.onProgress?.('Installing autostart script…', AUTOSTART_MARK)
   const autostartPath = `${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`
   await ssh.putBytes(autostartPath, signedPackage.payloadBytes('s10bespok3d-daemon'))
   await ssh.exec(`chmod 755 ${autostartPath}`)
@@ -40,7 +49,7 @@ async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signed
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openBundledPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)
-  ctx.onProgress?.('Creating directories…')
+  ctx.onProgress?.('Creating directories…', DAEMON_UPLOAD_SPAN.from)
   await ssh.exec(`rm -rf ${LEGACY_DIR}`)
   await removePackageEntries(ssh, DAEMON_BASE, runtimePaths)
   await uploadPayload({
@@ -50,8 +59,9 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
     payloadPaths: runtimePaths,
     progressLabel: 'Uploading daemon files…',
     onProgress: ctx.onProgress,
+    progressSpan: DAEMON_UPLOAD_SPAN,
   })
-  await uploadAdapterJinni(ssh, ctx)
+  await uploadAdapterJinni(ssh, ctx, JINNI_UPLOAD_SPAN)
   await deployAutostartScript(ssh, ctx, signedPackage)
   await cleanSystemPython(ssh)
   await ensureVenv(ssh, ctx)

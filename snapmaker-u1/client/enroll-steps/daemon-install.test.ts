@@ -131,6 +131,33 @@ describe('stepDeployDaemon', () => {
 
 })
 
+// The step is minutes long and uploads over a hundred files. A bar that cannot move while the file
+// count beside it climbs reads as a hung app, so every phase that knows its own size reports how far
+// through it is, and each phase owns a slice of the bar so the reported number only ever climbs.
+describe('stepDeployDaemon progress', () => {
+  function reportedFractions(reports: [string, number | undefined][], label: string): number[] {
+    return reports.filter(([hint]) => hint.startsWith(label)).map(([, fraction]) => fraction ?? -1)
+  }
+
+  it('advances a file at a time through each upload and never reports backwards', async () => {
+    stubBundledPackages()
+    const enroll = recordingSession()
+    const reports: [string, number | undefined][] = []
+    const watchedEnroll = { onProgress: (hint: string, stepFraction?: number) => { reports.push([hint, stepFraction]) } } as EnrollContext
+
+    await stepDeployDaemon(enroll.ssh, watchedEnroll)
+
+    const daemonFractions = reportedFractions(reports, 'Uploading daemon files…')
+    const jinniFractions = reportedFractions(reports, 'Uploading jinni…')
+    expect(daemonFractions).toHaveLength(5)
+    expect(jinniFractions).toHaveLength(JINNI_PAYLOAD.length)
+    expect(daemonFractions[daemonFractions.length - 1]).toBeCloseTo(0.75)
+    expect(jinniFractions[jinniFractions.length - 1]).toBeCloseTo(0.88)
+    const allFractions = reports.map(([, fraction]) => fraction).filter((fraction) => fraction !== undefined)
+    expect(allFractions).toEqual([...allFractions].sort((earlier, later) => earlier - later))
+  })
+})
+
 describe('stepDeployDaemon over an already enrolled printer', () => {
   // Installing over an existing tree clears what the two packages own and nothing else, so a printer
   // that is already enrolled keeps its certificate, its token, its daemon data and its installed

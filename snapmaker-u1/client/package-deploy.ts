@@ -8,6 +8,9 @@ import { posix } from 'path'
 import { shellQuote } from '@adapter-sdk'
 import type { BundledPackage, EnrollContext, SshSession } from '@adapter-sdk'
 
+import { spanFraction } from './step-progress'
+import type { ProgressSpan } from './step-progress'
+
 export interface PayloadUpload {
   ssh: SshSession
   signedPackage: BundledPackage
@@ -15,6 +18,8 @@ export interface PayloadUpload {
   payloadPaths: readonly string[]
   progressLabel: string
   onProgress?: EnrollContext['onProgress']
+  // The slice of the step's bar this upload owns, when the step does more than this one upload.
+  progressSpan?: ProgressSpan
 }
 
 // The directories the payload needs, deduped, so one mkdir builds the whole tree before any upload.
@@ -40,10 +45,16 @@ export async function removePackageEntries(ssh: SshSession, remoteBase: string, 
   await ssh.exec(`rm -rf ${owned.join(' ')}`)
 }
 
+// The file count is known before the first byte goes out, so the bar advances a file at a time and the
+// count beside it is what moved it.
+function uploadedFraction(upload: PayloadUpload, index: number): number {
+  return spanFraction(upload.progressSpan, (index + 1) / upload.payloadPaths.length)
+}
+
 async function uploadFromIndex(upload: PayloadUpload, index: number): Promise<void> {
   if (index >= upload.payloadPaths.length) return
   const payloadPath = upload.payloadPaths[index]
-  upload.onProgress?.(`${upload.progressLabel} ${index + 1}/${upload.payloadPaths.length}`)
+  upload.onProgress?.(`${upload.progressLabel} ${index + 1}/${upload.payloadPaths.length}`, uploadedFraction(upload, index))
   await upload.ssh.putBytes(`${upload.remoteBase}/${payloadPath}`, upload.signedPackage.payloadBytes(payloadPath))
 
   return uploadFromIndex(upload, index + 1)
