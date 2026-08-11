@@ -13,6 +13,11 @@ on-printer daemon delegates to.
 This repo holds the org's adapters as subdirectories, plus the shared jinni runtime they build on and
 the `lib_bespok3d` submodule (shared gate helpers and detectors, not adapter code).
 
+**Adapting a printer we do not support yet? Start at [doc/overview.md](doc/overview.md).** The
+documentation set covers what an adapter is, what each half does, how to build one start to finish
+(including what to check on a printer nobody has adapted before), and how to publish it:
+[doc/README.md](doc/README.md).
+
 ## What this repo ships
 
 - **`snapmaker-u1/`**: the Snapmaker U1 adapter, in two halves.
@@ -43,8 +48,10 @@ adapter loader surface; the client never imports app internals.
 snapmaker-u1/            the Snapmaker U1 adapter
   client/               app-side TypeScript: discovery, enrollment, deploy, device ops
   jinni/                on-device Python: U1 board facts, module loading, health, lmd display
+  testkit/              a fake U1 to test against, no hardware needed
   scripts/check.sh      this adapter's gate
 klipper-jinni/          the shared Klipper jinni runtime device adapters extend
+doc/                    how to write, test and publish an adapter
 lib_bespok3d/           submodule: shared gate helpers and workspace detectors
 CLAUDE.md, AGENTS.md    the contract for anyone (or any AI tool) editing this repo
 CONTRIBUTING.md         how to develop and submit a change
@@ -74,9 +81,10 @@ The gate also needs the `lib_bespok3d` submodule. If you cloned without it, run
 
 ## Releasing
 
-The jinni carries its version in `snapmaker-u1/jinni/version.json`; the client carries its own in
-`snapmaker-u1/client/version.ts`. Bump the version of the half you changed as part of the change. The
-build and signing of any published artifact is done by CI, not by hand.
+The jinni carries its version in `snapmaker-u1/jinni/version.json`; the client carries its own in its
+entry module. Bump the version of the half you changed as part of the change. The build and signing of
+any published artifact is done by CI, not by hand. Full detail in
+[doc/publishing-an-adapter.md](doc/publishing-an-adapter.md).
 
 ## Contributing
 

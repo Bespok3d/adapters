@@ -5,6 +5,13 @@ printer: it pairs a client side with a device-side jinni that actuates the hardw
 the org's adapters (the Snapmaker U1 for now) plus the shared `klipper-jinni` base they extend. See
 [README.md](README.md) if present, and each adapter's own docs, for the layout.
 
+## Adapting a printer we do not support yet
+
+Start at [doc/overview.md](doc/overview.md) and work through
+[doc/adapter-zero-to-hero.md](doc/adapter-zero-to-hero.md). It takes you from an unknown printer to a
+submitted adapter, and it carries the checklist of what has to be verified on a printer nobody has
+adapted before. [doc/README.md](doc/README.md) is the index of the whole set.
+
 ## Before you write code
 
 Read [CLAUDE.md](CLAUDE.md). It is the contract for changes here: the realm law (the daemon
