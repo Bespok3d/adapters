@@ -40,6 +40,7 @@ Your entry module calls it at load with one object. That object is your client.
 | `description` | one paragraph, shown in the app | say what it supports and what it will not touch |
 | `icon` | the printer's picture | a `data:` URL, because the app refuses remote images |
 | `defaults` | SSH user, port, password hint, runtime user | the hint is shown to the user, so it must be the vendor's documented default |
+| `restartSeconds` | how long your printer takes to come back after it is told to restart | the app empties its waiting bar over this, so time your own printer instead of copying ours. The app has no number of its own, so a printer whose adapter it cannot read waits with no bar rather than a made-up one |
 | `envVars` | the path variables plugins may use | values come from `paths.json`, never a second copy |
 | `enrollSteps` | the ordered enrollment recipe | see below |
 | `opSteps` | operations that are not part of enrollment | optional |

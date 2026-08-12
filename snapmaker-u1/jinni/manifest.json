@@ -7,7 +7,7 @@
   "category": "system",
   "channel": "stable",
   "printer_specific": true,
-  "changelog": null,
+  "changelog": "doc/CHANGELOG.md",
   "published_at": "2026-08-10",
   "updated_at": "2026-08-10",
   "source": "https://github.com/Bespok3d/adapters",
