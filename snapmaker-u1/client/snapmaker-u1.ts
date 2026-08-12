@@ -23,6 +23,8 @@ registerAdapter({
   version: '1.1.0',
   jinniVersion: JINNI_VERSION,
   jinniPackage: ADAPTER_JINNI_PACKAGE,
+  // A U1 is back and answering about three quarters of a minute after it is told to restart.
+  restartSeconds: 42,
   description:
     'Stock firmware adapter for the Snapmaker U1. Connects via SSH as root and installs bespok3d on top of the OEM system without modifying firmware.',
   icon: SNAPMAKER_U1_ICON,
