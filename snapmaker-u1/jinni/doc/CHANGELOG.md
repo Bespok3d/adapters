@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.11
+
+Nothing changes on the printer. This release is what lets the store show what each version of the
+printer half changed, which it could not do before.
+
 ## 0.1.10
 
 The printer stops asking to be switched off and on again because its screen had gone to sleep. It
