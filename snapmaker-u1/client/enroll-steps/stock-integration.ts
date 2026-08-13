@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { openBundledPackage } from '@adapter-sdk'
+import { openSystemPackage } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { DAEMON_PACKAGE } from '../packages'
@@ -13,7 +13,7 @@ import { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from '../k
 // as it did before, and every one is idempotent, so a re-enroll never doubles it up.
 
 export async function stepDeployS99(ssh: SshSession): Promise<void> {
-  const signedPackage = await openBundledPackage(DAEMON_PACKAGE)
+  const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   await ssh.putBytes('/etc/init.d/S99bespok3d', signedPackage.payloadBytes('S99bespok3d'))
   await ssh.exec('chmod 755 /etc/init.d/S99bespok3d')
 }

@@ -9,13 +9,17 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../../Bespok3d-desktop', import.meta.url)) },
 }))
 
-const openedPackages = vi.hoisted(() => ({ open: (async () => { throw new Error('no package stubbed') }) as (packageName: string) => Promise<BundledPackage> }))
+const openedPackages = vi.hoisted(() => ({
+  open: (async () => { throw new Error('no package stubbed') }) as (packageName: string) => Promise<BundledPackage>,
+}))
 
+// The daemon and the jinni both come through the SDK's machinery door, because the app can offer a
+// published one newer than the copy it ships with, and a daemon release can need a newer jinni.
 vi.mock('@adapter-sdk', () => ({
   shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
   devSourcePath: () => undefined,
   unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
-  openBundledPackage: (packageName: string) => openedPackages.open(packageName),
+  openSystemPackage: (packageName: string) => openedPackages.open(packageName),
 }))
 
 import { stepDeployDaemon } from './daemon-install'
@@ -46,11 +50,17 @@ function fakePackage(packageName: string, payloadPaths: readonly string[]): Bund
   }
 }
 
+const MACHINERY_PAYLOADS: Record<string, readonly string[]> = {
+  [DAEMON_PACKAGE]: DAEMON_PAYLOAD,
+  [ADAPTER_JINNI_PACKAGE]: JINNI_PAYLOAD,
+}
+
 function stubBundledPackages(): void {
   openedPackages.open = async (packageName: string) => {
-    if (packageName === DAEMON_PACKAGE) return fakePackage(DAEMON_PACKAGE, DAEMON_PAYLOAD)
-    if (packageName === ADAPTER_JINNI_PACKAGE) return fakePackage(ADAPTER_JINNI_PACKAGE, JINNI_PAYLOAD)
-    throw new Error(`unexpected package ${packageName}`)
+    const payloadPaths = MACHINERY_PAYLOADS[packageName]
+    if (!payloadPaths) throw new Error(`unexpected package ${packageName}`)
+
+    return fakePackage(packageName, payloadPaths)
   }
 }
 

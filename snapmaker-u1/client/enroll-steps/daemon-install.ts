@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { openBundledPackage } from '@adapter-sdk'
+import { openSystemPackage } from '@adapter-sdk'
 import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { uploadAdapterJinni } from '../jinni-deploy'
@@ -10,8 +10,9 @@ import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { cleanSystemPython, ensureVenv, installVenvDeps } from '../venv'
 
 // Putting the daemon on the printer: its Python source, the device-side jinni it drives, its autostart
-// script, and its own virtualenv. Every byte comes out of the signed package this build ships with, so
-// a printer that answers on port 22 and nothing else enrolls exactly like one with a way out to the
+// script, and its own virtualenv. Every byte comes out of the signed daemon package: the published one
+// when the lists offer a daemon newer than this build ships, and otherwise the copy in the build, so a
+// printer that answers on port 22 and nothing else enrolls exactly like one with a way out to the
 // internet. The printer's system Python, Klipper and Moonraker are never touched, so nothing bespok3d
 // installs can break the printer's own software.
 
@@ -47,7 +48,7 @@ async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signed
 }
 
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  const signedPackage = await openBundledPackage(DAEMON_PACKAGE)
+  const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)
   ctx.onProgress?.('Creating directories…', DAEMON_UPLOAD_SPAN.from)
   await ssh.exec(`rm -rf ${LEGACY_DIR}`)
