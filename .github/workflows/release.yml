@@ -91,7 +91,7 @@ jobs:
       - name: Stage the jinni as a plugin source dir
         run: sh scripts/stage-package.sh
 
-      - uses: Bespok3d/b3-builder@ff6ad98482c57c3966af1c1f7c8aefdf8be8c812  # main @ 2026-07-26
+      - uses: Bespok3d/b3-builder@f09f2529dafd7edf78a5256f0f66aa1d5324d4ea  # main @ 2026-08-30
         with:
           # repo, not plugin, and the staging script puts the jinni in a named dir under dist/package/
           # to match: only the repo unit releases and finalizes each atom's download URL. Naming no
