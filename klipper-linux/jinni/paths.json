@@ -1,0 +1,18 @@
+{
+  "BESPOK3D": "$HOME/bespok3d",
+  "BESPOK3D_PLUGINS": "$HOME/bespok3d/usr/local/plugins",
+  "BESPOK3D_KLIPPER": "$HOME/printer_data/config/bespok3d/klipper",
+  "BESPOK3D_MOONRAKER": "$HOME/printer_data/config/bespok3d/moonraker",
+  "PRINTER_DATA": "$HOME/printer_data",
+  "KLIPPER_SRC": "$HOME/klipper/klippy",
+  "KLIPPER_EXTRAS": "$HOME/klipper/klippy/extras",
+  "MOONRAKER_COMPONENTS": "$HOME/moonraker/moonraker/components",
+  "PRINTER_CFG": "$HOME/printer_data/config/printer.cfg",
+  "MOONRAKER_CFG": "$HOME/printer_data/config/moonraker.conf",
+  "PYTHON_SITE_PACKAGES": "",
+  "KLIPPER_LOG": "$HOME/printer_data/logs/klippy.log",
+  "MOONRAKER_LOG": "$HOME/printer_data/logs/moonraker.log",
+  "KLIPPER_UDS": "$HOME/printer_data/comms/klippy.sock",
+  "MOONRAKER_UDS": "$HOME/printer_data/comms/moonraker.sock",
+  "RUNTIME_USER": "$USER"
+}

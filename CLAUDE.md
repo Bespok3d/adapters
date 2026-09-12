@@ -22,6 +22,8 @@ gate detectors and helpers, not adapter code).
   - A Python **jinni** (`jinni/`): the on-device half. It carries U1 device knowledge (board facts,
     kernel-module loading, device health, the `lmd` display control) and actuates what the daemon asks
     for on the printer.
+- `klipper-linux/`: the Klipper on Linux adapter, one code base registering both `voron-24` and
+  `klipper-generic`, for a Klipper printer whose host is a systemd Linux box (MainsailOS, KIAUH).
 - `klipper-jinni/`: the shared Klipper jinni runtime that device adapters extend. It speaks the daemon's
   `protocol` package; the snapmaker-u1 jinni builds on it, and future printer adapters (a Voron, say) will
   too. Generic Klipper knowledge lives here; one printer's quirks live in that printer's adapter.
