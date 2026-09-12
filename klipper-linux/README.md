@@ -5,8 +5,12 @@ Voron 2.4 running MainsailOS on a Raspberry Pi, a Fluidd or KIAUH install, a BTT
 base registers two adapter ids, `voron-24` ("Voron 2.4") and `klipper-generic` ("Klipper: generic").
 They run the same steps against the same jinni package and differ only in what the picker shows.
 
-It has **not yet run on real hardware**. Everything here is checked by the gate and against the
-upstream sources named in `doc/ATTRIBUTIONS.md`, and the first run on a printer is still ahead.
+It has **not yet run on real hardware**. It has run end to end against a bench: a Debian 12 arm64
+VM laid out exactly like MainsailOS (Klipper on its Linux host MCU, Moonraker, a `pi` account whose
+sudo asks for its password), driven by the app's own enrolment, daemon client and lifecycle code
+(`Bespok3d-desktop/tests/invitro/klipper-linux-bench.invitro.test.ts`). Enrolment, the daemon and
+jinni reporting the adapter, deactivate, reactivate with plugin recovery, a second enrolment and a
+clean removal all pass there. The first run on a printer is still ahead.
 
 ## What the printer has to be
 
