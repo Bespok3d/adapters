@@ -14,6 +14,10 @@ _JINNI_DIR = Path(bespok3d_jinni.__file__).resolve().parent
 _VERSION_FILE = _JINNI_DIR / "version.json"
 _MANIFEST_FILE = _JINNI_DIR / "manifest.json"
 
+# The two ids the app registers against this one code base. Every test about reading the enrolment
+# id back runs under both, so neither can quietly become the only one that works.
+_ADAPTER_IDS = ["voron-24", "klipper-generic"]
+
 
 @pytest.fixture
 def printer_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -43,12 +47,30 @@ def test_id_is_the_code_base_when_no_enrolment_has_written_a_layout(printer_home
     assert make_jinni().id == "klipper-linux"
 
 
-def test_id_is_the_adapter_the_printer_was_enrolled_as(printer_home: Path) -> None:
+@pytest.mark.parametrize("adapter_id", _ADAPTER_IDS)
+def test_id_is_the_adapter_the_printer_was_enrolled_as(printer_home: Path, adapter_id: str) -> None:
     """One code base answers for two adapter ids, and which one this printer is enrolled as is
     enrolment knowledge: the host itself cannot be asked whether it is a Voron."""
-    _write_layout(printer_home, {"adapter": "voron-24"})
+    _write_layout(printer_home, {"adapter": adapter_id})
 
-    assert make_jinni().id == "voron-24"
+    assert make_jinni().id == adapter_id
+
+
+def test_the_two_ids_change_nothing_about_this_host_but_which_adapter_answered(
+    printer_home: Path,
+) -> None:
+    """What the variant engine matches a manifest's `when` against is read off the host, so the id
+    the printer was enrolled under is the one fact in it that either id can change."""
+    _write_layout(printer_home, {"adapter": "voron-24"})
+    voron_facts = make_jinni().variant_facts()
+    _write_layout(printer_home, {"adapter": "klipper-generic"})
+    generic_facts = make_jinni().variant_facts()
+
+    assert voron_facts["adapter"] == "voron-24"
+    assert generic_facts["adapter"] == "klipper-generic"
+    assert {fact: value for fact, value in voron_facts.items() if fact != "adapter"} == {
+        fact: value for fact, value in generic_facts.items() if fact != "adapter"
+    }
 
 
 def test_id_is_the_code_base_when_the_layout_names_no_adapter(printer_home: Path) -> None:
@@ -69,18 +91,24 @@ def test_paths_name_the_runtime_user_rather_than_the_template(printer_home: Path
     assert make_jinni().paths()["RUNTIME_USER"] == "pi"
 
 
-def test_the_layout_a_discovery_wrote_wins_over_the_templates(printer_home: Path) -> None:
+@pytest.mark.parametrize("adapter_id", _ADAPTER_IDS)
+def test_the_layout_a_discovery_wrote_wins_over_the_templates(
+    printer_home: Path, adapter_id: str
+) -> None:
     """A host that keeps Klipper somewhere else is still understood, because enrolment read the
     truth off the printer and wrote it down."""
-    _write_layout(printer_home, {"KLIPPER_SRC": "/opt/klipper/klippy", "adapter": "voron-24"})
+    _write_layout(printer_home, {"KLIPPER_SRC": "/opt/klipper/klippy", "adapter": adapter_id})
     paths = make_jinni().paths()
 
     assert paths["KLIPPER_SRC"] == "/opt/klipper/klippy"
     assert paths["MOONRAKER_CFG"] == f"{printer_home}/printer_data/config/moonraker.conf"
 
 
-def test_the_layout_entries_that_are_not_path_variables_are_not_paths(printer_home: Path) -> None:
-    _write_layout(printer_home, {"adapter": "voron-24", "home": "/home/pi", "sites": []})
+@pytest.mark.parametrize("adapter_id", _ADAPTER_IDS)
+def test_the_layout_entries_that_are_not_path_variables_are_not_paths(
+    printer_home: Path, adapter_id: str
+) -> None:
+    _write_layout(printer_home, {"adapter": adapter_id, "home": "/home/pi", "sites": []})
     paths = make_jinni().paths()
 
     assert "adapter" not in paths
@@ -128,7 +156,14 @@ def test_the_published_package_advertises_the_version_the_jinni_reports() -> Non
 
 
 def test_capability_flags_advertise_what_this_host_class_supports(printer_home: Path) -> None:
-    assert make_jinni().capability_flags() == {"managed-service", "klipper-linux", "systemd"}
+    """`klipper-generic` is in there because it is the flag a manifest asks for when it means "any
+    Klipper printer", which is what this host class is under either id it was enrolled as."""
+    assert make_jinni().capability_flags() == {
+        "managed-service",
+        "klipper-linux",
+        "klipper-generic",
+        "systemd",
+    }
 
 
 def test_restart_commands_go_through_systemd_without_a_prompt(printer_home: Path) -> None:

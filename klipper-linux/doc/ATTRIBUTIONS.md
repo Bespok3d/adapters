@@ -3,7 +3,8 @@
 **Plugin author:** Bespok3d, against a stock MainsailOS, Fluidd or KIAUH install
 
 Teaches Bespok3d how to enrol and talk to a Klipper printer whose host is a Debian style Linux box
-with systemd, which is what a Voron 2.4 normally runs.
+with systemd, which is what a Voron 2.4, or any MainsailOS, Fluidd or KIAUH printer, runs. Registered
+in the app as both `voron-24` and `klipper-generic`.
 
 | Upstream project | Author | Licence | Needed at runtime | Code ships in this package |
 | --- | --- | --- | --- | --- |

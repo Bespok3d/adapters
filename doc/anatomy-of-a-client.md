@@ -32,7 +32,7 @@ Your entry module calls it at load with one object. That object is your client.
 
 | Field | What it is | Notes |
 | --- | --- | --- |
-| `id` | the adapter id | matches your directory name |
+| `id` | the adapter id | usually your directory name, but the directory names the code base: a client may call `registerAdapter` once per id it offers, as `klipper-linux` does for `voron-24` and `klipper-generic`, which share everything but title, vendor and description |
 | `title`, `vendor` | what the user reads | the printer's real name, not ours |
 | `version` | the client version | you bump this by hand |
 | `jinniVersion` | the printer half's version | read from `jinni/version.json`, never typed |

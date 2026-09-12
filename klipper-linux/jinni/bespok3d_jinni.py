@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Klipper on Linux Jinni: the daemon-side half of the adapter that enrols a Voron 2.4.
+"""Klipper on Linux Jinni: the daemon-side half of the adapter that enrols a Klipper printer on a
+systemd Linux host, a Voron 2.4 or any generic Klipper box.
 
 Shipped with the adapter and installed next to the daemon, which loads it via `make_jinni()`. The
 host is a Debian style Linux box with systemd (MainsailOS, Fluidd, a KIAUH install), so it is a
@@ -115,8 +116,11 @@ class KlipperLinuxJinni(KlipperPrinterJinni):
 
     def capability_flags(self) -> set[str]:
         """No overlay (the filesystem is writable), no kernel modules, and no lmd: a Linux host has
-        a display only if the user attached one, and it is not ours to drive."""
-        return {"managed-service", "klipper-linux", "systemd"}
+        a display only if the user attached one, and it is not ours to drive. `klipper-generic` is
+        the flag a manifest means by "any Klipper printer" in `requires.capabilities`, and this host
+        class is exactly that under either product id it was enrolled as: an id says which printer
+        this is, a flag says what it can do."""
+        return {"managed-service", "klipper-linux", "klipper-generic", "systemd"}
 
     def restart_command(self, hook: str) -> str | None:
         """Klipper and Moonraker, through the two commands the sudoers drop-in allows. There is no

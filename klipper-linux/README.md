@@ -10,7 +10,9 @@ VM laid out exactly like MainsailOS (Klipper on its Linux host MCU, Moonraker, a
 sudo asks for its password), driven by the app's own enrolment, daemon client and lifecycle code
 (`Bespok3d-desktop/tests/invitro/klipper-linux-bench.invitro.test.ts`). Enrolment, the daemon and
 jinni reporting the adapter, deactivate, reactivate with plugin recovery, a second enrolment and a
-clean removal all pass there. The first run on a printer is still ahead.
+clean removal all pass there, under **both** adapter ids: the bench was run once per id, so
+`klipper-generic` is proven end to end exactly as `voron-24` is. The first run on a printer is still
+ahead.
 
 ## What the printer has to be
 
@@ -65,6 +67,16 @@ with it.
   needs a Python dependency of its own has no interpreter to be linked into on this adapter.
 - **No in vitro fixture.** The U1's harness is root and busybox shaped and does not model this host,
   and there is no Docker fixture for a Pi in this workspace.
+
+## Variants and the adapter id
+
+The daemon's variant engine matches a manifest's `when: {adapter: ...}` by exact id, and this one
+code base answers to two of them. A variant meant for this whole host class therefore has to carry
+one variant per id, `voron-24` and `klipper-generic`, or better, no `adapter` condition at all: the
+other dimensions (`arch`, `board_class`, `kernel_release`) are the ones that actually differ between
+two of these printers. What to reach for instead of an id is the capability flag: this jinni
+advertises `klipper-generic`, which is what "any Klipper host" means in a manifest's
+`requires.capabilities`, under either id the printer was enrolled as.
 
 ## Where the layout comes from
 

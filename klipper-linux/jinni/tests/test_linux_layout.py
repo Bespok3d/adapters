@@ -108,15 +108,17 @@ def test_a_path_the_templates_never_named_still_reaches_the_daemon(
     assert paths["KLIPPER_ENV"] == "/home/pi/klippy-env"
 
 
+@pytest.mark.parametrize("adapter_id", ["voron-24", "klipper-generic"])
 def test_the_layout_entries_that_are_not_path_variables_are_left_out(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, adapter_id: str
 ) -> None:
     """The layout file also carries the adapter id, the home directory and the nginx site list.
-    None of those is a path variable, and a plugin resolving `$adapter` would be nonsense."""
+    None of those is a path variable, and a plugin resolving `$adapter` would be nonsense. Either
+    of the two ids the app registers reaches this file, and neither is a path."""
     monkeypatch.setenv("USER", "pi")
     paths = linux_layout.resolve_paths(
         _TEMPLATES, "/home/pi",
-        {"adapter": "voron-24", "home": "/home/pi", "nginx_sites": ["/etc/nginx/sites/mainsail"]},
+        {"adapter": adapter_id, "home": "/home/pi", "nginx_sites": ["/etc/nginx/sites/mainsail"]},
     )
 
     assert set(paths) == set(_TEMPLATES)
