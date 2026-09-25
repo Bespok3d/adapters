@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The plugin services Bespok3d manages, started once at boot and stopped once at shutdown. The
+# enrolment fills in the login user and the workspace root, then installs the result as
+# /etc/systemd/system/bespok3d-plugins.service.
+[Unit]
+Description=Bespok3d plugin services
+Documentation=https://github.com/Bespok3d/adapters
+# A plugin service talks to Klipper or Moonraker and registers with the daemon, so all three come
+# up first.
+After=bespok3d.service klipper.service moonraker.service network-online.target
+
+[Service]
+# One shot that stays "active" afterwards: the work is starting the scripts, and each of those is a
+# service of its own with its own pidfile. RemainAfterExit is what makes ExecStop run at shutdown.
+Type=oneshot
+RemainAfterExit=yes
+User=__USER__
+Environment=BESPOK3D=__BESPOK3D__
+ExecStart=__BESPOK3D__/etc/init.d/bespok3d-plugins start
+ExecStop=__BESPOK3D__/etc/init.d/bespok3d-plugins stop
+
+[Install]
+WantedBy=multi-user.target

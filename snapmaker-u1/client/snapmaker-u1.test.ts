@@ -180,3 +180,9 @@ describe('adapter jinni version', () => {
     expect(getAdapter('snapmaker-u1')?.jinniVersion).toBe(VERSION_JSON.jinni_version)
   })
 })
+
+describe('workspaceRoot', () => {
+  it('is the one fixed workspace every U1 keeps, with no session needed to name it', async () => {
+    expect(await getAdapter('snapmaker-u1')?.workspaceRoot({} as SshSession)).toBe(PATHS_JSON.BESPOK3D)
+  })
+})

@@ -1,17 +1,27 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Size ratchet: makes a god file a failing, visible check, so a concern-mixing file like the old
-// 794-line snapmaker-u1.ts cannot re-form unnoticed. Reads adapter-baseline.json and enforces:
+// 794-line snapmaker-u1.ts cannot re-form unnoticed. Takes the adapter directory to check as its one
+// argument, so every adapter in this repo ratchets through this one copy:
+//
+//   node scripts/size-ratchet.mjs snapmaker-u1
+//
+// Reads <adapter>/adapter-baseline.json and enforces:
 //   1. No NEW source file over its per-extension ceiling unless it is an allowlisted exception.
 //   2. Equal-or-tighten on each allowlisted file: growth FAILs; a shrink FAILs asking you to lower
 //      the baseline (the ratchet click, so an improvement is banked as a reviewed edit).
 // The ceiling is a SIGNAL, not the law: when it fires, split the file by concern, or (last resort,
 // for one genuinely cohesive concern) allowlist it with a note. Exit 0 only when clean.
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { join, extname, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, extname, relative, resolve } from 'node:path'
 
-const ADAPTER_ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..')
+const adapterArgument = process.argv[2]
+if (!adapterArgument) {
+  console.error('Ratchet: name the adapter directory to check, e.g. node scripts/size-ratchet.mjs snapmaker-u1')
+  process.exit(2)
+}
+
+const ADAPTER_ROOT = resolve(adapterArgument)
 const baseline = JSON.parse(readFileSync(join(ADAPTER_ROOT, 'adapter-baseline.json'), 'utf8'))
 const { tsCeiling, pyCeiling, allowlist } = baseline
 

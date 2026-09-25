@@ -88,7 +88,10 @@ is expected to survive a vendor update, or to be repairable in one click after o
 An adapter is not a fork. If your printer needs a change to the daemon or the app, that is a
 conversation to have before you write it, not a patch to carry.
 
-## The one that exists today
+## The ones that exist today
+
+`klipper-linux/` is the gentle one: a Klipper printer on a systemd Linux host, registering `voron-24`
+and `klipper-generic` from a single code base, and it is mostly a list of paths and a few services.
 
 The Snapmaker U1 is the reference adapter, and it is the hardest kind: a read-only root filesystem, an
 overlay that a firmware update wipes, a boot sequence that ignores anything added over SSH, and a

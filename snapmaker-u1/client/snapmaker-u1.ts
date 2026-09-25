@@ -5,13 +5,16 @@ import { registerAdapter } from '@adapter-sdk'
 import { ENV_VARS } from './env-vars'
 import { ENROLL_STEPS, OP_STEPS } from './enroll-steps'
 import { SNAPMAKER_U1_ICON } from './icon'
+import { diagnoseDaemon, LIFECYCLE, readDaemonLog } from './lifecycle'
 import { verifyEnrolled } from './overlay'
 import { ADAPTER_JINNI_PACKAGE } from './packages'
+import { BESPOK3D } from './paths'
 import { JINNI_VERSION } from './version'
 
 // The adapter's public surface, consumed by the app's main process (patchS90lmd) and the adapter
 // tests, re-exported from the concern modules so importers keep a single entry point.
 export { patchNginx, patchS90lmd } from './stock-patches'
+export { bespok3dRemovalCommand } from './lifecycle'
 export { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from './klipper-includes'
 export { isPrinting } from './print-state'
 export { writeLayerActive, verifyEnrolled } from './overlay'
@@ -37,5 +40,10 @@ registerAdapter({
   envVars: ENV_VARS,
   enrollSteps: ENROLL_STEPS,
   opSteps: OP_STEPS,
+  lifecycle: LIFECYCLE,
+  readDaemonLog,
+  diagnoseDaemon,
+  // A U1 keeps the workspace at one fixed place on every printer, so no session is needed to name it.
+  workspaceRoot: async () => BESPOK3D,
   verifyEnrolled,
 })

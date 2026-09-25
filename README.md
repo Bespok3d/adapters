@@ -27,6 +27,8 @@ documentation set covers what an adapter is, what each half does, how to build o
   - A Python **jinni** (`jinni/`): the on-device half. It carries U1 device knowledge (board facts,
     kernel-module loading, device health, the `lmd` display control) and actuates on the printer what
     the daemon asks for.
+- **`klipper-linux/`**: the Klipper on Linux adapter, one code base registering both `voron-24` and
+  `klipper-generic`, for a Klipper printer whose host is a systemd Linux box (MainsailOS, KIAUH).
 - **`klipper-jinni/`**: the shared Klipper jinni runtime that device adapters extend. Generic Klipper
   knowledge lives here; one printer's quirks live in that printer's adapter. See its own
   [README](klipper-jinni/README.md).
@@ -50,6 +52,7 @@ snapmaker-u1/            the Snapmaker U1 adapter
   jinni/                on-device Python: U1 board facts, module loading, health, lmd display
   testkit/              a fake U1 to test against, no hardware needed
   scripts/check.sh      this adapter's gate
+klipper-linux/          the Klipper on Linux adapter (voron-24 and klipper-generic)
 klipper-jinni/          the shared Klipper jinni runtime device adapters extend
 doc/                    how to write, test and publish an adapter
 lib_bespok3d/           submodule: shared gate helpers and workspace detectors
@@ -64,6 +67,7 @@ Each half gates on its own. Run the gate of the part you changed:
 
 ```sh
 bash snapmaker-u1/scripts/check.sh     # the Snapmaker U1 adapter (client + jinni)
+bash klipper-linux/scripts/check.sh    # the Klipper on Linux adapter (client + jinni)
 bash klipper-jinni/scripts/check.sh    # the shared Klipper jinni base
 ```
 

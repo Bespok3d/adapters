@@ -20,8 +20,11 @@ adapters/
   klipper-jinni/       shared Klipper runtime, not yours, you build on it
 ```
 
-The name of the directory is the adapter id, and it is the same string the app uses to pick your
-adapter for a discovered printer. Use lower case with hyphens: `snapmaker-u1`.
+The name of the directory names the code base and the package it ships as. An adapter id is what the
+app uses to pick your adapter for a discovered printer, and a code base registers one or more of them
+through `registerAdapter`: usually one, spelled like the directory, but `klipper-linux` registers two
+(`voron-24` and `klipper-generic`) that share everything but their title, vendor and description. Use
+lower case with hyphens for both: `snapmaker-u1`.
 
 ## The client
 

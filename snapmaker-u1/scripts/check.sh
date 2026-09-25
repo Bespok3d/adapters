@@ -27,7 +27,7 @@ echo "snapmaker-u1 adapter gate"
 
 b3d_python_tools
 
-run_check "size ratchet"   node "$REPO_ROOT/scripts/ratchet.mjs"
+run_check "size ratchet"   node "$REPO_ROOT/../scripts/size-ratchet.mjs" "$REPO_ROOT"
 
 run_check "ruff (jinni)"   ruff_in_dir "$REPO_ROOT" jinni
 # The jinni extends the shared klipper jinni and speaks the daemon's `protocol` package, so the type

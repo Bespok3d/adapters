@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The only root Bespok3d keeps after enrolment, installed as /etc/sudoers.d/bespok3d with mode 440
+# after visudo has accepted it. It is a closed list of exact commands against a fixed set of units,
+# so nothing here can be widened by an argument: no shell, no editor, no systemctl against any other
+# unit, and nothing that makes root read a file this account can write. The enrolment fills in the
+# login user, which is the account everything Bespok3d runs as.
+Cmnd_Alias BESPOK3D_SERVICES = /usr/bin/systemctl start bespok3d, /usr/bin/systemctl stop bespok3d, /usr/bin/systemctl restart bespok3d, /usr/bin/systemctl start bespok3d-plugins, /usr/bin/systemctl stop bespok3d-plugins, /usr/bin/systemctl restart bespok3d-plugins, /usr/bin/systemctl restart klipper, /usr/bin/systemctl restart moonraker, /usr/bin/systemctl reboot
+__USER__ ALL=(root) NOPASSWD: BESPOK3D_SERVICES

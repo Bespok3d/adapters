@@ -17,6 +17,8 @@ An adapter is how Bespok3d learns to speak to one printer. These pages are how y
 
 - [story-obligations.md](story-obligations.md): what an adapter owes the user stories. Read it before
   proposing something new; the idea you have may already be a story with a shape.
+- Two adapters ship today to read as worked examples: `snapmaker-u1/` and `klipper-linux/` (the Klipper
+  on Linux adapter, which registers both `voron-24` and `klipper-generic` from one code base).
 
 ## Elsewhere in the repo
 

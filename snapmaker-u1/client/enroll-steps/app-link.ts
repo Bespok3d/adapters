@@ -32,7 +32,9 @@ export async function stepEnrollDaemonKey(ssh: SshSession, ctx: EnrollContext): 
   const existing = await readAcl(ssh)
   const identity = ctx.clientFingerprint || ctx.clientId || ''
   const token = ctx.daemonToken || ''
-  const role = existing.keys.length === 0 ? 'admin' : 'user'
+  // A computer already in the list keeps the role it has: re-enrolling (a recovery does this) must
+  // not demote the printer's one admin to a user.
+  const role = existing.roles[identity] ?? (existing.keys.length === 0 ? 'admin' : 'user')
   const next = identity
     ? grantedAcl(existing, identity, token, role, ctx.clientLabel || '')
     : { ...existing, tokens: token && !existing.tokens.includes(token) ? [...existing.tokens, token] : existing.tokens }

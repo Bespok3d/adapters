@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The Bespok3d daemon on a Klipper Linux host. The enrolment fills in the login user, the
+# workspace root and the daemon's virtualenv, then installs the result as
+# /etc/systemd/system/bespok3d.service.
+[Unit]
+Description=Bespok3d daemon
+Documentation=https://github.com/Bespok3d/adapters
+# Moonraker is what the daemon reads print state through, and the network has to be up before it
+# binds its port, so both come first. Neither is required: the daemon reports a printer it cannot
+# reach rather than refusing to start, which is what makes that state visible in the app.
+After=network-online.target moonraker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Environment=BESPOK3D_DATA_ROOT=__BESPOK3D__
+WorkingDirectory=__BESPOK3D__/var/lib/daemon
+# The log file is opened by the shell that already runs as the login user, never by systemd as root:
+# every path in the workspace belongs to that user, and root must not open a file there that the
+# user could have pointed somewhere else.
+ExecStart=/bin/sh -c 'exec "__VENV__/bin/python3" "__BESPOK3D__/var/lib/daemon/daemon.py" >>"__BESPOK3D__/var/log/daemon.log" 2>&1'
+Restart=on-failure
+RestartSec=5
+# Only the daemon itself is killed on a restart. The plugin services it started are in this unit's
+# control group but are not its children to end: a daemon upgrade must never take a user's running
+# plugin down with it.
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
