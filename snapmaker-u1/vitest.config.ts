@@ -10,6 +10,7 @@ import { resolve } from 'path'
 const APP_REPO = resolve(__dirname, '../../Bespok3d-desktop')
 
 export default {
+  define: { __B3D_CHANNEL__: '"live"' },
   resolve: {
     alias: {
       '@adapter-sdk': resolve(APP_REPO, 'src/main/adapter-loader/index.ts'),
