@@ -7,3 +7,4 @@ export interface Bespok3dInclude {
 export declare const KLIPPER_INCLUDE: Bespok3dInclude;
 export declare const MOONRAKER_INCLUDE: Bespok3dInclude;
 export declare function bespok3dIncludeCommand(cfgPath: string, include: Bespok3dInclude): string;
+export declare function bespok3dIncludeIfPresentCommand(cfgPath: string, include: Bespok3dInclude): string;

@@ -234,3 +234,71 @@ def test_a_screen_that_went_to_sleep_is_never_reported_as_needing_a_power_cycle(
     accused a perfectly healthy printer every single time it dimmed, so the U1 reports nothing to
     power cycle until there is a read that can tell a sleeping screen from a dead one."""
     assert SnapmakerU1Jinni().reboot_required() == []
+
+
+def test_paths_name_the_firmware_copies_the_boot_restores_the_configs_from() -> None:
+    paths = SnapmakerU1Jinni().paths()
+    assert paths["PRINTER_CFG_ORIGIN"] == "/home/lava/origin_printer_data/config/printer.cfg"
+    assert paths["MOONRAKER_CFG_ORIGIN"] == "/home/lava/origin_printer_data/config/moonraker.conf"
+
+
+def _u1_with_configs(monkeypatch: pytest.MonkeyPatch, config_paths: dict[str, Path]) -> None:
+    shared_paths = json.loads(_PATHS_FILE.read_text())
+    monkeypatch.setattr(
+        SnapmakerU1Jinni, "device_paths",
+        lambda _self: shared_paths | {key: str(path) for key, path in config_paths.items()},
+    )
+
+
+def test_config_copies_add_the_firmware_copy_the_boot_restores_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live_printer_cfg = tmp_path / "printer.cfg"
+    origin_printer_cfg = tmp_path / "origin_printer.cfg"
+    origin_printer_cfg.write_text("[printer]\n")
+    _u1_with_configs(monkeypatch, {"PRINTER_CFG": live_printer_cfg,
+                                   "PRINTER_CFG_ORIGIN": origin_printer_cfg})
+
+    assert SnapmakerU1Jinni().config_copies("PRINTER_CFG") == [live_printer_cfg, origin_printer_cfg]
+
+
+def test_config_copies_leave_out_a_firmware_copy_this_firmware_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live_printer_cfg = tmp_path / "printer.cfg"
+    _u1_with_configs(monkeypatch, {"PRINTER_CFG": live_printer_cfg,
+                                   "PRINTER_CFG_ORIGIN": tmp_path / "missing" / "printer.cfg"})
+
+    assert SnapmakerU1Jinni().config_copies("PRINTER_CFG") == [live_printer_cfg]
+
+
+_LIVE_CONFIG_FILES = {"PRINTER_CFG": "printer.cfg", "MOONRAKER_CFG": "moonraker.conf"}
+
+
+def _stock_live_and_origin_configs(tmp_path: Path) -> dict[str, Path]:
+    (tmp_path / "live").mkdir()
+    (tmp_path / "origin").mkdir()
+    config_paths = {
+        **{key: tmp_path / "live" / name for key, name in _LIVE_CONFIG_FILES.items()},
+        **{f"{key}_ORIGIN": tmp_path / "origin" / name for key, name in _LIVE_CONFIG_FILES.items()},
+    }
+    for config in config_paths.values():
+        config.write_text("[stock]\n")
+    return config_paths
+
+
+def test_restored_includes_survive_the_boot_putting_the_firmware_copy_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What S48setup-lava-env does on firmware 2.0: a live config that differs from its copy is
+    overwritten by the copy. With the line in both, the copy it puts back still carries it."""
+    config_paths = _stock_live_and_origin_configs(tmp_path)
+    _u1_with_configs(monkeypatch, config_paths)
+
+    SnapmakerU1Jinni().restore_bespok3d_includes()
+    for live_key in _LIVE_CONFIG_FILES:
+        config_paths[live_key].write_text(config_paths[f"{live_key}_ORIGIN"].read_text())
+
+    assert SnapmakerU1Jinni().bespok3d_include_status() == {
+        "printer.cfg": True, "moonraker.conf": True,
+    }

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import board
+import firmware_config_origin
 import kernel_facts
 import module_scripts
 import service_scripts
@@ -50,6 +51,10 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
     def device_paths(self) -> dict[str, str]:
         paths: dict[str, str] = json.loads(_PATHS_FILE.read_text())
         return paths
+
+    def config_copies(self, path_key: str) -> list[Path]:
+        return [*super().config_copies(path_key),
+                *firmware_config_origin.origin_copies(self.paths(), path_key)]
 
     def hardware(self) -> list[str]:
         return ["camera-mipi", "rfid-spi", "npu-rknn"]
