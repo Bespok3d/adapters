@@ -2,14 +2,12 @@
 
 ## 0.1.12
 
-A printer on firmware 2.0 dropped out of Bespok3d on every reboot. Its boot puts Snapmaker's own copy
-of `printer.cfg` and `moonraker.conf` (under `/home/lava/origin_printer_data/config`) back over the
-live files whenever they differ, and that copy did not carry the Bespok3d include lines, so after
-each boot Klipper and Moonraker loaded no plugin and "Put it back" never stuck. Putting the lines
-back now writes them into that copy too, enrolling writes them there as well, and switching
-Bespok3d off takes them out of both. A printer counts as set up only when both carry the lines, so
-one enrolled before this release shows the banner once, and "Put it back" fixes it across reboots.
-A firmware without that copy is wired exactly as before.
+A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
+stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker
+settings, and that copy did not know about Bespok3d. Bespok3d now adds itself to that copy too when
+you enroll or press "Put it back", and takes itself out of both when you switch Bespok3d off. A
+printer enrolled before this release shows the banner once, and "Put it back" then fixes it for
+good. Printers on other firmware work as before. Thanks to olavgm.
 
 ## 0.1.11
 
