@@ -4,10 +4,10 @@
 
 A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
 stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker
-settings, and that copy did not know about Bespok3d. Bespok3d now adds itself to that copy too when
-you enroll or press "Put it back", and takes itself out of both when you switch Bespok3d off. A
-printer enrolled before this release shows the banner once, and "Put it back" then fixes it for
-good. Printers on other firmware work as before. Thanks to olavgm.
+settings, and that copy did not know about Bespok3d. "Put it back" now adds Bespok3d to that copy
+too, and switching Bespok3d off takes it out of both. A printer that already had Bespok3d shows the
+banner once, and "Put it back" then fixes it for good. Printers on other firmware work as before.
+Thanks to olavgm.
 
 ## 0.1.11
 
