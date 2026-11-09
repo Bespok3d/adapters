@@ -6,6 +6,7 @@ A fake /proc (cmdline + fd symlinks) stands in for the printer's: the running pr
 live log by holding it open, Klipper's `info` names it as a second proof, and a configured path is
 only a fallback when it was written recently, always labelled as such.
 """
+import os
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,17 @@ def test_the_configured_path_is_used_only_when_freshly_written(tmp_path: Path) -
     assert found is not None and found.path == fresh
     assert "no running process holds it" in found.origin
     assert live_logs.locate_klipper_log({}, str(stale), no_proc, _NOW) is None
+
+
+def test_of_several_configured_paths_the_freshest_written_one_is_used(tmp_path: Path) -> None:
+    # One adapter serves firmware that logs to different places, so it names every place.
+    older = _log(tmp_path / "printer_data" / "klippy.log", "", _NOW - 300)
+    newest = _log(tmp_path / "klippylogs" / "klippy.log", "", _NOW - 30)
+    configured = os.pathsep.join((str(tmp_path / "missing.log"), str(older), str(newest)))
+
+    found = live_logs.locate_klipper_log({}, configured, tmp_path / "no-proc", _NOW)
+
+    assert found is not None and found.path == newest
 
 
 def test_moonraker_log_comes_from_the_running_moonraker(tmp_path: Path) -> None:

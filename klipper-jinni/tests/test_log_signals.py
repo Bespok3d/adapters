@@ -101,3 +101,61 @@ def test_an_error_from_an_earlier_moonraker_run_is_not_blamed(tmp_path: Path) ->
         "Unable to bind to port 7125"))
     signals = read_failure_signals(None, moonraker, "", _MOONRAKER_FAILED)
     assert signals.modules == ()
+
+
+_PLUGIN_EXTRA = "/home/lava/klipper/klippy/extras/afc.py"
+_KLIPPER_CORE = "/home/lava/klipper/klippy/configfile.py"
+_KLIPPY = "/home/lava/klipper/klippy/klippy.py"
+
+
+def _traceback(*frame_files: str) -> str:
+    frames = "".join(f'  File "{frame_file}", line 7, in load\n' for frame_file in frame_files)
+    return f"Traceback (most recent call last):\n{frames}Exception: boom\n"
+
+
+def test_a_core_file_raising_for_a_plugin_still_names_the_plugin(tmp_path: Path) -> None:
+    klipper = _live_log(tmp_path / "klippy.log", _traceback(_KLIPPY, _PLUGIN_EXTRA, _KLIPPER_CORE))
+    signals = read_failure_signals(klipper, None, "", _KLIPPER_FAILED)
+    assert signals.files == (_KLIPPER_CORE, _PLUGIN_EXTRA, _KLIPPY)
+
+
+def test_an_earlier_traceback_the_service_survived_is_not_blamed(tmp_path: Path) -> None:
+    survived = "/home/lava/klipper/klippy/extras/survived.py"
+    klipper = _live_log(tmp_path / "klippy.log",
+                        _traceback(survived) + "still running\n" + _traceback(_PLUGIN_EXTRA))
+    signals = read_failure_signals(klipper, None, "", _KLIPPER_FAILED)
+    assert signals.files == (_PLUGIN_EXTRA,)
+
+
+def test_a_chained_traceback_keeps_the_files_of_the_exception_it_grew_from(
+        tmp_path: Path) -> None:
+    chained = (_traceback(_PLUGIN_EXTRA)
+               + "\nDuring handling of the above exception, another exception occurred:\n\n"
+               + _traceback(_KLIPPY, _KLIPPER_CORE))
+    klipper = _live_log(tmp_path / "klippy.log", chained)
+    signals = read_failure_signals(klipper, None, "", _KLIPPER_FAILED)
+    assert signals.files == (_KLIPPER_CORE, _KLIPPY, _PLUGIN_EXTRA)
+
+
+def test_a_cause_raised_from_keeps_the_files_of_the_exception_it_wraps(tmp_path: Path) -> None:
+    wrapped = (_traceback(_PLUGIN_EXTRA)
+               + "\nThe above exception was the direct cause of the following exception:\n\n"
+               + _traceback(_KLIPPY, _KLIPPER_CORE))
+    klipper = _live_log(tmp_path / "klippy.log", wrapped)
+    signals = read_failure_signals(klipper, None, "", _KLIPPER_FAILED)
+    assert signals.files == (_KLIPPER_CORE, _KLIPPY, _PLUGIN_EXTRA)
+
+
+def test_every_member_of_an_exception_group_keeps_its_files(tmp_path: Path) -> None:
+    group = ("  + Exception Group Traceback (most recent call last):\n"
+             f'  |   File "{_KLIPPY}", line 7, in run\n'
+             "  | ExceptionGroup: unhandled errors (2 sub-exceptions)\n"
+             "  +-+---------------- 1 ----------------\n"
+             "    | Traceback (most recent call last):\n"
+             f'    |   File "{_PLUGIN_EXTRA}", line 7, in load\n'
+             "    +---------------- 2 ----------------\n"
+             "    | Traceback (most recent call last):\n"
+             f'    |   File "{_KLIPPER_CORE}", line 7, in load\n')
+    klipper = _live_log(tmp_path / "klippy.log", group)
+    signals = read_failure_signals(klipper, None, "", _KLIPPER_FAILED)
+    assert _PLUGIN_EXTRA in signals.files
