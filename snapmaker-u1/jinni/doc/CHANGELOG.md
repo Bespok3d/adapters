@@ -18,6 +18,12 @@ until the printer was restarted.
 After a restart the screen could show Wi-Fi off while the printer was connected. When that happens,
 the printer now restarts the screen app once, and the screen shows Wi-Fi on.
 
+When a plugin stopped Klipper from starting, Bespok3d sometimes failed to notice which plugin it
+was, so it did not switch that plugin off and the printer stayed stopped. On firmware 2.1 it was
+reading an old Klipper log that the printer no longer writes. It now reads the log the running
+Klipper and Moonraker really write, starts from the error Klipper itself reports, and never trusts
+an old log.
+
 ## 0.1.11
 
 Nothing changes on the printer. This release is what lets the store show what each version of the

@@ -5,21 +5,29 @@
 The daemon asks a single semantic question, "is the device healthy?", rather than probing each
 service; `health()` assembles the report. Each service is read over its auth-free Unix socket
 (`printer_comms`) so it survives the moonraker-auth plugin's force_logins, falling back to the
-jinni's own reachability (an injected `service_get`); the stock MQTT broker is a device fact folded
-in. The retry loops and the /server/info parsing live here as pure functions; the `KlipperHealth`
-facet (also here) supplies the socket paths (from Layout) and the reachability probe (from Probing).
+jinni's own reachability (an injected `service_get`). Klipper's readiness is `klipper_readiness`;
+the Moonraker retry loop and the /server/info parsing live here as pure functions; the
+`KlipperHealth` facet (also here) supplies the socket paths (from Layout) and the reachability probe
+(from Probing). On a failure the signals come from the logs the running services really write
+(`live_logs`).
 """
 import json
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from protocol import DeviceHealth, ServiceHealth
+from protocol import DeviceHealth, FailureSignals, ServiceHealth
 
+from . import live_logs
+from .inspection import ServiceProbe
+from .klipper_readiness import (
+    KLIPPER_RETRIES,
+    KLIPPER_RETRY_DELAY_S,
+    KlipperReadiness,
+    klipper_healthy,
+)
 from .klipper_vocab import KLIPPER_SERVICE, MOONRAKER_SERVICE
 from .layout import Layout
 from .log_signals import read_failure_signals
-from .printer_comms import klippy
 from .printer_comms import moonraker as moonraker_client
 from .probing import Probing
 
@@ -36,11 +44,6 @@ class MoonrakerInfo:
     failed_components: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
-# A localhost reachability probe (the jinni's own service_get): (url) -> (up, body).
-ServiceProbe = Callable[[str], tuple[bool, str]]
-
-KLIPPER_RETRIES = 6
-KLIPPER_RETRY_DELAY_S = 5
 MOONRAKER_RETRIES = 60
 MOONRAKER_RETRY_DELAY_S = 1
 
@@ -52,29 +55,7 @@ HEALTH_PROBE_BUDGET_S = (
     KLIPPER_RETRIES * KLIPPER_RETRY_DELAY_S + MOONRAKER_RETRIES * MOONRAKER_RETRY_DELAY_S
 )
 
-_KLIPPER_INFO_URL = "http://localhost:7125/printer/info"
 _MOONRAKER_INFO_URL = "http://localhost:7125/server/info"
-
-
-def _klipper_ready_once(socket_path: str, service_get: ServiceProbe) -> tuple[bool, str]:
-    """One readiness check. Prefer Klipper's API socket (no auth, immune to Moonraker force_logins);
-    fall back to the HTTP probe when the socket is unreachable."""
-    state = klippy.query_klippy_state(socket_path) if socket_path else None
-    if state is not None:
-        return state == "ready", f"klippy state via api socket: {state or 'unknown'}"
-    return service_get(_KLIPPER_INFO_URL)
-
-
-def klipper_healthy(socket_path: str, service_get: ServiceProbe) -> tuple[bool, str]:
-    last_out = ""
-    for attempt in range(KLIPPER_RETRIES):
-        ok, out = _klipper_ready_once(socket_path, service_get)
-        if ok:
-            return True, out
-        last_out = out
-        if attempt < KLIPPER_RETRIES - 1:
-            time.sleep(KLIPPER_RETRY_DELAY_S)
-    return False, last_out
 
 
 def _info_from_result(result: dict, raw: str) -> MoonrakerInfo:
@@ -119,6 +100,24 @@ def probe_moonraker(socket_path: str, service_get: ServiceProbe) -> MoonrakerInf
     return MoonrakerInfo(reachable=False, raw=last_out)
 
 
+def _failing_services(report: DeviceHealth) -> frozenset[str]:
+    return frozenset(name for name, service in report.services.items()
+                     if not service.ready or service.failed_components)
+
+
+def _failure_signals(paths: dict[str, str], klipper: KlipperReadiness,
+                     report: DeviceHealth) -> FailureSignals:
+    now = time.time()
+    state_message = "" if klipper.ready else str(klipper.info.get("state_message") or "")
+    return read_failure_signals(
+        live_logs.locate_klipper_log(
+            klipper.info, paths.get("KLIPPER_LOG", ""), live_logs.PROC_ROOT, now),
+        live_logs.locate_moonraker_log(paths.get("MOONRAKER_LOG", ""), live_logs.PROC_ROOT, now),
+        state_message,
+        _failing_services(report),
+    )
+
+
 class KlipperHealth(Layout, Probing):
     """The health facet for a klipper printer: assemble the `DeviceHealth` report by probing Klipper
     and Moonraker over their auth-free sockets (HTTP fallback). It reports the domain services only;
@@ -127,11 +126,11 @@ class KlipperHealth(Layout, Probing):
 
     def health(self) -> DeviceHealth:
         paths = self.paths()
-        klipper_ready, klipper_detail = klipper_healthy(paths.get("KLIPPER_UDS", ""), self.service_get)  # noqa: E501
+        klipper = klipper_healthy(paths.get("KLIPPER_UDS", ""), self.service_get)
         moonraker = probe_moonraker(paths.get("MOONRAKER_UDS", ""), self.service_get)
         report = DeviceHealth(
             services={
-                KLIPPER_SERVICE: ServiceHealth(ready=klipper_ready, detail=klipper_detail),
+                KLIPPER_SERVICE: ServiceHealth(ready=klipper.ready, detail=klipper.detail),
                 MOONRAKER_SERVICE: ServiceHealth(
                     ready=moonraker.reachable, detail=moonraker.raw,
                     failed_components=tuple(moonraker.failed_components),
@@ -142,7 +141,5 @@ class KlipperHealth(Layout, Probing):
         # On a failure, read our OWN logs for the signals the daemon attributes to a plugin. The
         # daemon never opens a device log (ADR-0037); it maps these identifiers via its placements.
         if not report.healthy:
-            report.signals = read_failure_signals(
-                paths.get("KLIPPER_LOG", ""), paths.get("MOONRAKER_LOG", ""),
-            )
+            report.signals = _failure_signals(paths, klipper, report)
         return report

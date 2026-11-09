@@ -5,42 +5,30 @@
 `health()` is the single verb the daemon's safety net asks for. It probes each service over its
 auth-free Unix socket (so it survives the moonraker-auth plugin's force_logins) with an HTTP
 fallback, and folds in the stock MQTT broker. The retry loops + /server/info parsing are the pure
-functions `klipper_healthy` / `probe_moonraker` / `_parse_server_info`, exercised directly here; the
-assembly into a report is exercised through `health()`.
+functions `probe_moonraker` / `_parse_server_info`, exercised directly here (Klipper's readiness has
+its own test file); the assembly into a report is exercised through `health()`.
 """
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from email.message import Message
+from pathlib import Path
 from typing import NoReturn
 
 import pytest
 
-from jinni import health, inspection
+from jinni import health, inspection, klipper_readiness, live_logs
 from jinni.health import MoonrakerInfo
 from jinni.klipper import KLIPPER_PATH_KEYS, KlipperPrinterJinni
 from jinni.klipper_vocab import KLIPPER_SERVICE, MOONRAKER_SERVICE
+from tests.fake_proc import fake_log, fake_process
 
 MP = pytest.MonkeyPatch
 
 
 def _probe(up: bool, body: str) -> Callable[[str], tuple[bool, str]]:
     return lambda _url: (up, body)
-
-
-def test_klipper_healthy_prefers_the_api_socket(monkeypatch: MP) -> None:
-    # Klipper's API socket is auth-free, so it is the source of truth even when Moonraker forces
-    # logins; the HTTP probe is only the fallback when the socket is unavailable.
-    monkeypatch.setattr(health.klippy, "query_klippy_state", lambda _path: "ready")
-    ready, detail = health.klipper_healthy("/tmp/klippy.sock", _probe(False, ""))
-    assert ready is True
-    assert "api socket" in detail
-
-
-def test_klipper_healthy_falls_back_to_http_without_a_socket() -> None:
-    ready, detail = health.klipper_healthy("", _probe(True, "via http"))
-    assert ready is True
-    assert detail == "via http"
 
 
 def test_probe_moonraker_reads_force_logins_401_as_up(monkeypatch: MP) -> None:
@@ -102,15 +90,19 @@ class _HealthJinni(KlipperPrinterJinni):
         return {**{key: f"/dev/null/{key}" for key in KLIPPER_PATH_KEYS}, **self._sockets}
 
 
+_READY_INFO = {"state": "ready"}
+
+
 def _sockets() -> dict[str, str]:
     return {"KLIPPER_UDS": "/tmp/klippy.sock", "MOONRAKER_UDS": "/tmp/moonraker.sock"}
 
 
-def test_health_assembles_a_device_report(monkeypatch: MP) -> None:
+def test_health_assembles_a_device_report(monkeypatch: MP, tmp_path: Path) -> None:
     # The shared klipper tier reports only the domain services; a device's own infrastructure (the
     # U1 broker) is the device jinni's to diagnose, so health() here carries no broker fact.
+    monkeypatch.setattr(live_logs, "PROC_ROOT", tmp_path / "no-proc")
     jinni = _HealthJinni(_sockets())
-    monkeypatch.setattr(health.klippy, "query_klippy_state", lambda _path: "ready")
+    monkeypatch.setattr(klipper_readiness.klippy, "query_klippy_info", lambda _path: _READY_INFO)
     monkeypatch.setattr(
         health.moonraker_client, "server_info",
         lambda _path: {"klippy_state": "ready", "failed_components": ["notifier"], "warnings": []},
@@ -126,10 +118,74 @@ def test_health_assembles_a_device_report(monkeypatch: MP) -> None:
 
 def test_health_is_healthy_when_every_service_is_ready(monkeypatch: MP) -> None:
     jinni = _HealthJinni(_sockets())
-    monkeypatch.setattr(health.klippy, "query_klippy_state", lambda _path: "ready")
+    monkeypatch.setattr(klipper_readiness.klippy, "query_klippy_info", lambda _path: _READY_INFO)
     monkeypatch.setattr(
         health.moonraker_client, "server_info",
         lambda _path: {"klippy_state": "ready", "failed_components": [], "warnings": []},
     )
 
     assert jinni.health().healthy is True
+
+
+_KLIPPY_ARGV = ("python3", "/home/lava/klipper/klippy/klippy.py", "printer.cfg")
+_MOONRAKER_ARGV = ("python3", "/home/lava/moonraker/moonraker/moonraker.py")
+
+
+def test_health_reads_the_live_log_not_the_stale_one_halted_klipper(
+        monkeypatch: MP, tmp_path: Path) -> None:
+    # Junior's incident: Klipper halted at config load on a plugin's section, its real log moved
+    # by a firmware update, and a klippy.log left at the configured path naming another error.
+    # The report must name the section Klipper halted on now, never an earlier run's or the decoy's.
+    now = time.time()
+    stale_log = fake_log(tmp_path / "printer_data" / "klippy.log",
+                         "Section 'stale_decoy_section' is not a valid config section", now)
+    live_log = fake_log(tmp_path / "klippylogs" / "klippy.log",
+                        "Section 'earlier_run_section' is not a valid config section\n"
+                        "Start printer at Mon Nov  9 10:00:00 2026\nconfigfile.ConfigError", now)
+    proc_root = tmp_path / "proc"
+    # A command line that names no klippy.py: only the pid Klipper reports can find the process.
+    fake_process(proc_root, 1276, ("python3", "/opt/printer/main.py"), live_log)
+    halted_info = {
+        "state": "error", "process_id": 1276, "log_file": str(live_log),
+        "state_message": "Section 'afc' is not a valid config section\nPrinter is halted",
+    }
+    monkeypatch.setattr(klipper_readiness.klippy, "query_klippy_info", lambda _path: halted_info)
+    monkeypatch.setattr(klipper_readiness.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        health.moonraker_client, "server_info",
+        lambda _path: {"klippy_state": "error", "failed_components": [], "warnings": []},
+    )
+    monkeypatch.setattr(live_logs, "PROC_ROOT", proc_root)
+    jinni = _HealthJinni({**_sockets(), "KLIPPER_LOG": str(stale_log)})
+
+    report = jinni.health()
+
+    assert report.services[KLIPPER_SERVICE].ready is False
+    assert report.signals.sections == ("afc",)
+    assert f"{live_log} ({live_logs.HELD_OPEN})" in report.signals.log_tails
+    assert "stale_decoy_section" not in report.signals.log_tails
+
+
+def test_a_ready_klippers_old_error_is_not_blamed_for_moonraker(
+        monkeypatch: MP, tmp_path: Path) -> None:
+    # Only a failing service's log is evidence: Klipper is ready, so the error its log kept from an
+    # earlier run says nothing about the component Moonraker failed to load now.
+    now = time.time()
+    klipper_log = fake_log(tmp_path / "klippylogs" / "klippy.log",
+                           "Section 'earlier_run_section' is not a valid config section", now)
+    moonraker_log = fake_log(tmp_path / "logs" / "moonraker.log",
+                             "ModuleNotFoundError: No module named 'plugin_dep'", now)
+    proc_root = tmp_path / "proc"
+    fake_process(proc_root, 1276, _KLIPPY_ARGV, klipper_log)
+    fake_process(proc_root, 1291, _MOONRAKER_ARGV, moonraker_log)
+    monkeypatch.setattr(klipper_readiness.klippy, "query_klippy_info", lambda _path: _READY_INFO)
+    monkeypatch.setattr(
+        health.moonraker_client, "server_info",
+        lambda _path: {"klippy_state": "ready", "failed_components": ["plugin"], "warnings": []},
+    )
+    monkeypatch.setattr(live_logs, "PROC_ROOT", proc_root)
+
+    report = _HealthJinni(_sockets()).health()
+
+    assert report.signals.sections == ()
+    assert report.signals.modules == ("plugin_dep",)

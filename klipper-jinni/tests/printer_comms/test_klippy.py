@@ -27,7 +27,10 @@ def test_decode_frame_returns_empty_without_terminator() -> None:
 def test_state_extractors() -> None:
     query = {"result": {"status": {"print_stats": {"state": "printing"}}}}
     assert klippy.print_state_from_query(query) == "printing"
-    assert klippy.klippy_state_from_info({"result": {"state": "ready"}}) == "ready"
+    halted_info = {"state": "error", "state_message": "Section 'afc' is not a valid config section",
+                   "process_id": 1276, "log_file": "/oem/klippylogs/klippy.log"}
+    assert klippy.klippy_info_from_response({"result": halted_info}) == halted_info
+    assert klippy.klippy_info_from_response({"result": "garbled"}) == {}
 
 
 def _serve_once(sock_path: str, response: dict) -> threading.Thread:
