@@ -23,20 +23,13 @@ vi.mock('@adapter-sdk', () => ({
 }))
 
 import { stepDeployDaemon } from './daemon-install'
-import { fakePackage, JINNI_PAYLOAD, packagedContent } from '../fake-packages'
+import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD, packagedContent } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE, ADAPTER_JINNI_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 
-const DAEMON_RUNTIME = [
-  'daemon.py',
-  'version.py',
-  'api/routes.py',
-  'core/state.py',
-  'core/legacy.py',
-  'wheels/fastapi-0.115.0-py3-none-any.whl',
-  'S99bespok3d',
-]
+const AUTOSTART_SCRIPT = 's10bespok3d-daemon'
+const DAEMON_RUNTIME = DAEMON_PAYLOAD.filter((payloadPath) => payloadPath !== AUTOSTART_SCRIPT)
 
 function stubBundledPackages(): void {
   openedPackages.open = async (packageName: string) => fakePackage(packageName)
@@ -70,10 +63,10 @@ describe('stepDeployDaemon', () => {
     DAEMON_RUNTIME.forEach((payloadPath) => {
       expect(printer.files.get(`${DAEMON_BASE}/${payloadPath}`)?.toString()).toBe(packagedContent(DAEMON_PACKAGE, payloadPath))
     })
-    expect(printer.files.get(`${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`)?.toString())
-      .toBe(packagedContent(DAEMON_PACKAGE, 's10bespok3d-daemon'))
-    expect([...printer.files.keys()].some((filePath) => filePath.startsWith('/etc/'))).toBe(false)
-    expect(printer.files.has(`${DAEMON_BASE}/s10bespok3d-daemon`)).toBe(false)
+    expect(printer.files.get(`${BESPOK3D}/etc/init.d/autostart/${AUTOSTART_SCRIPT}`)?.toString())
+      .toBe(packagedContent(DAEMON_PACKAGE, AUTOSTART_SCRIPT))
+    expect([...printer.files.keys()].filter((filePath) => filePath.includes('S99bespok3d'))).toEqual([`${DAEMON_BASE}/S99bespok3d`])
+    expect(printer.files.has(`${DAEMON_BASE}/${AUTOSTART_SCRIPT}`)).toBe(false)
   })
 
   // ADR-0037: the jinni is its own signed package, and the files placed on the printer are its payload,

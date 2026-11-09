@@ -23,13 +23,16 @@ vi.mock('@adapter-sdk', () => ({
 }))
 
 import { stepDeployDaemon, stepRefreshDaemonVenv } from './daemon-install'
-import { fakePackage, JINNI_PAYLOAD } from '../fake-packages'
+import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD } from '../fake-packages'
 import type { PackageRelease } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import type { FakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE } from '../packages'
 import { DAEMON_BASE } from '../paths'
 import { sha256Of } from '../payload-hashes'
+
+// The daemon's autostart script travels on its own, to the autostart directory; the rest goes in the stream.
+const STREAMED_DAEMON_PAYLOAD = DAEMON_PAYLOAD.filter((payloadPath) => payloadPath !== 's10bespok3d-daemon')
 
 // An update compares the printer's files with the signed package and sends only what differs.
 const updateEnroll = { sendChangedFilesOnly: true } as EnrollContext
@@ -103,7 +106,7 @@ describe('stepDeployDaemon as an update', () => {
 
     await stepDeployDaemon(printer.ssh, updateEnroll)
 
-    expect(printer.streams.map((stream) => stream.length)).toEqual([7 + JINNI_PAYLOAD.length])
+    expect(printer.streams.map((stream) => stream.length)).toEqual([STREAMED_DAEMON_PAYLOAD.length + JINNI_PAYLOAD.length])
   })
 })
 
@@ -157,6 +160,16 @@ describe('stepRefreshDaemonVenv', () => {
     expect(pipRuns(printer)[0]).toContain(NEWER_WHEEL)
     expect(printer.streams).toEqual([])
     expect(printer.uploads).toEqual([])
+  })
+
+  it('remembers the wheels it installed, so the next refresh runs no pip', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toHaveLength(1)
   })
 
   it('runs no pip when the venv already holds the wheels on the printer', async () => {
