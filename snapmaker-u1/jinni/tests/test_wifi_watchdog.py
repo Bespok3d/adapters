@@ -15,7 +15,7 @@ def test_heals_only_when_the_interface_is_up_without_an_ip(monkeypatch: pytest.M
     healed = []
     monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
     monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
-    monkeypatch.setattr(wifi_watchdog, "_wlan_has_ip", lambda: False)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: False)
     wifi_watchdog._check_and_heal()
     assert healed == ["heal"]
 
@@ -24,7 +24,7 @@ def test_does_not_heal_when_the_interface_has_an_ip(monkeypatch: pytest.MonkeyPa
     healed = []
     monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
     monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
-    monkeypatch.setattr(wifi_watchdog, "_wlan_has_ip", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: True)
     wifi_watchdog._check_and_heal()
     assert healed == []
 
@@ -33,7 +33,7 @@ def test_does_not_heal_when_there_is_no_wlan_interface(monkeypatch: pytest.Monke
     healed = []
     monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
     monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: False)
-    monkeypatch.setattr(wifi_watchdog, "_wlan_has_ip", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: True)
     wifi_watchdog._check_and_heal()
     assert healed == []
 
@@ -177,7 +177,7 @@ def test_logs_a_failed_round_and_tries_again(
 def _lose_the_ip(monkeypatch: pytest.MonkeyPatch, tools_dir: Path) -> None:
     monkeypatch.setenv("PATH", str(tools_dir))
     monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
-    monkeypatch.setattr(wifi_watchdog, "_wlan_has_ip", lambda: False)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: False)
     monkeypatch.setattr(wifi_watchdog, "_restore_stock_credentials", lambda: None)
 
 

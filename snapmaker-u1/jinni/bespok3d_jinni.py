@@ -6,8 +6,9 @@ Shipped with the adapter and installed next to the daemon, which loads it via `m
 a klipper printer, so it extends `KlipperPrinterJinni` (the klipper path contract + facts) and
 overrides only the genuinely U1-specific facts and service vocabulary. The logic-bearing concerns it
 would otherwise mix in live in their own modules next to this one: wifi self-heal (wifi_watchdog),
-service-script rendering (service_scripts), and failure diagnosis (device_health). This class is the
-composition root: it declares the device's facts and wires those concerns to the contract methods.
+the boot check of the screen's Wi-Fi (screen_wifi), service-script rendering (service_scripts), and
+failure diagnosis (device_health). This class is the composition root: it declares the device's
+facts and wires those concerns to the contract methods.
 """
 import json
 import subprocess
@@ -21,6 +22,7 @@ import kernel_facts
 import module_scripts
 import service_scripts
 from device_health import diagnose_broker
+from screen_wifi import screen_wifi_check
 from wifi_watchdog import wifi_watchdog
 
 from jinni import KlipperPrinterJinni
@@ -118,7 +120,7 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
         return service_scripts.startup_control_scripts(paths)
 
     def background_tasks(self) -> list[Coroutine[Any, Any, None]]:
-        return [wifi_watchdog()]
+        return [wifi_watchdog(), screen_wifi_check(self.print_active)]
 
 
 def make_jinni() -> SnapmakerU1Jinni:

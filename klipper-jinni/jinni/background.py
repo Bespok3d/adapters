@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The jinni's background tasks, held and watched for the life of the process.
 
-A device jinni declares long-running tasks (the U1's Wi-Fi watchdog). The process starts each one,
-holds it so it cannot be garbage collected mid-run, and logs a plain line when one crashes.
+A device jinni declares background tasks (the U1's Wi-Fi watchdog, its boot check of the screen's
+Wi-Fi). The process starts each one, holds it so it cannot be garbage collected mid-run, and logs a
+plain line when one crashes. A task that finishes its job ends quietly.
 """
 import asyncio
 import logging
@@ -19,9 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def _report_stopped_task(task: asyncio.Task[None]) -> None:
-    # A background task is meant to run for the life of the process, so any end is worth a line,
-    # and a held task that fails is never collected, so asyncio would not report it.
-    if task.cancelled():
+    # A held task that fails is never collected, so asyncio would not report it.
+    if task.cancelled() or task.exception() is None:
         return
     logger.error(TASK_STOPPED, task.get_name(), exc_info=task.exception())
 

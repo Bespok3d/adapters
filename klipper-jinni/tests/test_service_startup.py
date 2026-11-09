@@ -50,6 +50,15 @@ async def _crashing_watchdog() -> None:
     raise RuntimeError("watchdog bug")
 
 
+class _OneShotJinni(_BareJinni):
+    def background_tasks(self) -> list[Coroutine[Any, Any, None]]:
+        return [_boot_check()]
+
+
+async def _boot_check() -> None:
+    return None
+
+
 async def _running_after_garbage_collection(jinni: Jinni) -> list[asyncio.Task[None]]:
     background.start_background_tasks(jinni)
     await asyncio.sleep(0)
@@ -79,6 +88,16 @@ def test_a_background_task_that_crashes_is_logged(
         asyncio.run(_start_and_wait(_CrashingJinni(str(tmp_path))))
     assert "The printer's _crashing_watchdog stopped" in caplog.text
     assert "watchdog bug" in caplog.text
+
+
+# The bug: a task that finished its job was logged as stopped, as if it had crashed.
+def test_a_background_task_that_finishes_its_job_logs_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(background, "_background_tasks", [])
+    with caplog.at_level(logging.ERROR, logger="jinni.background"):
+        asyncio.run(_start_and_wait(_OneShotJinni(str(tmp_path))))
+    assert caplog.records == []
 
 
 def test_write_startup_scripts_writes_the_declared_scripts(tmp_path: Path) -> None:

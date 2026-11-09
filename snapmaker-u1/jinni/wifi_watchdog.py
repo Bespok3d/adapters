@@ -35,7 +35,7 @@ def _wlan_exists() -> bool:
     return result.returncode == 0
 
 
-def _wlan_has_ip() -> bool:
+def wlan_has_ip() -> bool:
     result = subprocess.run(
         ["ip", "-4", "addr", "show", WLAN_IFACE],
         capture_output=True, text=True, timeout=IP_TIMEOUT_S, check=False,
@@ -87,7 +87,7 @@ def _restore_wifi() -> None:
 
 
 def _check_and_heal() -> None:
-    if _wlan_exists() and not _wlan_has_ip():
+    if _wlan_exists() and not wlan_has_ip():
         _restore_wifi()
 
 
