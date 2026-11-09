@@ -34,8 +34,9 @@ def print_state_from_query(response: dict) -> str:
     return str(status.get("print_stats", {}).get("state", ""))
 
 
-def klippy_state_from_info(response: dict) -> str:
-    return str(response.get("result", {}).get("state", ""))
+def klippy_info_from_response(response: dict) -> dict:
+    result = response.get("result", {})
+    return result if isinstance(result, dict) else {}
 
 
 def _request(socket_path: str, method: str, params: dict,
@@ -53,7 +54,8 @@ def query_print_state(socket_path: str) -> str | None:
     return None if response is None else print_state_from_query(response)
 
 
-def query_klippy_state(socket_path: str) -> str | None:
-    """Klipper's readiness ('ready' / 'startup' / ...) via the API socket; None when unreachable."""
+def query_klippy_info(socket_path: str) -> dict | None:
+    """Klipper's `info` reply (state, state_message, process_id, log_file, ...) via the API socket;
+    None when the socket is unreachable."""
     response = _request(socket_path, "info", {})
-    return None if response is None else klippy_state_from_info(response)
+    return None if response is None else klippy_info_from_response(response)

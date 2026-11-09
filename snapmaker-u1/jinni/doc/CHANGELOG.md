@@ -9,6 +9,12 @@ you enroll or press "Put it back", and takes itself out of both when you switch 
 printer enrolled before this release shows the banner once, and "Put it back" then fixes it for
 good. Printers on other firmware work as before. Thanks to olavgm.
 
+When a plugin stopped Klipper from starting, Bespok3d sometimes failed to notice which plugin it
+was, so it did not switch that plugin off and the printer stayed stopped. On firmware 2.1 it was
+reading an old Klipper log that the printer no longer writes. It now reads the log the running
+Klipper and Moonraker really write, starts from the error Klipper itself reports, and never trusts
+an old log.
+
 ## 0.1.11
 
 Nothing changes on the printer. This release is what lets the store show what each version of the

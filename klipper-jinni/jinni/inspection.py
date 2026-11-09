@@ -13,6 +13,7 @@ import json
 import socket
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from .printer_comms import klippy
@@ -46,6 +47,10 @@ def tcp_port_listening(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(_PORT_PROBE_TIMEOUT_S)
         return probe.connect_ex((_PROBE_HOST, port)) == 0
+
+
+# A localhost reachability probe (the jinni's own service_get): (url) -> (up, body).
+ServiceProbe = Callable[[str], tuple[bool, str]]
 
 
 def http_service_get(url: str, timeout: int = 3) -> tuple[bool, str]:
