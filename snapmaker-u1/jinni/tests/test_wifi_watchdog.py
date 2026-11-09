@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 # SPDX-License-Identifier: AGPL-3.0-or-later
+import asyncio
 import logging
 from pathlib import Path
 
@@ -146,3 +147,73 @@ def test_logs_a_plain_message_when_the_live_config_links_to_itself(
     live_config.symlink_to(live_config)
     _point_at(monkeypatch, screen_copy, live_config)
     assert "could not put the Wi-Fi saved on its screen in use" in _restore_and_log(caplog)
+
+
+class _WatchdogStopped(BaseException):
+    """Ends the endless watchdog loop in a test; the watchdog lets it through like a cancel."""
+
+
+def _failing_round(rounds: list[str]) -> None:
+    if len(rounds) == 2:
+        raise _WatchdogStopped
+    rounds.append("failed")
+    raise FileNotFoundError("ifdown")
+
+
+# The bug: one failed round ended the watchdog, and the Wi-Fi was never healed again.
+def test_logs_a_failed_round_and_tries_again(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    rounds: list[str] = []
+    monkeypatch.setattr(wifi_watchdog, "WATCHDOG_INTERVAL_S", 0)
+    monkeypatch.setattr(wifi_watchdog, "_check_and_heal", lambda: _failing_round(rounds))
+    with caplog.at_level(logging.WARNING, logger="wifi_watchdog"), pytest.raises(_WatchdogStopped):
+        asyncio.run(wifi_watchdog.wifi_watchdog())
+    assert rounds == ["failed", "failed"]
+    assert len(caplog.records) == 1
+    assert "The printer could not check or restart its Wi-Fi" in caplog.text
+
+
+def _lose_the_ip(monkeypatch: pytest.MonkeyPatch, tools_dir: Path) -> None:
+    monkeypatch.setenv("PATH", str(tools_dir))
+    monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "_wlan_has_ip", lambda: False)
+    monkeypatch.setattr(wifi_watchdog, "_restore_stock_credentials", lambda: None)
+
+
+def _heal_twice(caplog: pytest.LogCaptureFixture) -> str:
+    with caplog.at_level(logging.WARNING, logger="wifi_watchdog"):
+        first_failure = wifi_watchdog._heal_round("")
+        return wifi_watchdog._heal_round(first_failure)
+
+
+def test_logs_once_when_ifdown_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    _lose_the_ip(monkeypatch, tmp_path)
+    assert "ifdown" in _heal_twice(caplog)
+    assert len(caplog.records) == 1
+
+
+# ifup's output differs from try to try (here its process id), and that is still the same failure.
+def test_logs_why_ifup_failed_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    (tmp_path / "ifdown").write_text("#!/bin/sh\nexit 0\n")
+    (tmp_path / "ifup").write_text('#!/bin/sh\necho "no wpa_supplicant $$" >&2\nexit 1\n')
+    (tmp_path / "ifdown").chmod(0o755)
+    (tmp_path / "ifup").chmod(0o755)
+    _lose_the_ip(monkeypatch, tmp_path)
+    assert "ifup" in _heal_twice(caplog)
+    assert len(caplog.records) == 1
+    assert "no wpa_supplicant" in caplog.text
+
+
+def test_a_round_that_works_again_says_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(wifi_watchdog, "_check_and_heal", lambda: None)
+    with caplog.at_level(logging.WARNING, logger="wifi_watchdog"):
+        assert wifi_watchdog._heal_round("ifdown not found") == ""
+        assert wifi_watchdog._heal_round("") == ""
+    assert caplog.messages == [wifi_watchdog.HEAL_WORKS_AGAIN]

@@ -11,7 +11,9 @@ Thanks to olavgm.
 
 When the printer lost its Wi-Fi, Bespok3d put back the network saved on the screen, and that could
 replace the network Bespok3d keeps. The kept network now stays, and if the screen's network
-cannot be put back, the printer says so in its log.
+cannot be put back, the printer says so in its log. If restarting the Wi-Fi fails, the printer
+now says so in its log and tries again 30 seconds later. Before, some failures made it stop trying
+until the printer was restarted.
 
 ## 0.1.11
 

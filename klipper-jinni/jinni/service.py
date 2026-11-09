@@ -27,6 +27,7 @@ from protocol import (
 )
 
 from . import interface_extras
+from .background import start_background_tasks
 from .loader import get_jinni
 from .stream import serve_stream
 
@@ -130,8 +131,7 @@ async def run(socket_path: str) -> None:
     (startup scripts, background tasks), then serve the contract until killed."""
     jinni = get_jinni()
     _write_startup_scripts(jinni)
-    for coro in jinni.background_tasks():
-        asyncio.create_task(coro)
+    start_background_tasks(jinni)
     server = await serve(socket_path, jinni)
     async with server:
         await server.serve_forever()
