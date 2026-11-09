@@ -52,8 +52,9 @@ function wheelHashes(signedPackage: BundledPackage, runtimePaths: readonly strin
   return new Map(wheelPaths.map((wheelPath) => [wheelPath, sha256Of(signedPackage.payloadBytes(wheelPath))]))
 }
 
-// The daemon and the jinni share the daemon's directory, so they travel in one stream. An update sends
-// only the files the printer does not already hold, and runs pip only when a wheel changed.
+// The daemon and the jinni share the daemon's directory, so they travel in one stream. With
+// sendChangedFilesOnly it sends only the files whose checksum differs from the printer's, and pip runs
+// only when a wheel changed.
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)

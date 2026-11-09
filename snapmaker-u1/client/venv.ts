@@ -30,11 +30,12 @@ export async function cleanSystemPython(ssh: SshSession): Promise<void> {
   )
 }
 
+// A venv made afresh holds no packages, so the marker of an earlier pip run goes with the old one.
 export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const exists = (await ssh.exec(`test -x ${VENV}/bin/python3 && echo yes || echo no`)).trim()
   if (exists !== 'yes') {
     ctx.onProgress?.('Creating Python virtual environment…')
-    await ssh.exec(`python3 -m venv ${VENV}`)
+    await ssh.exec(`python3 -m venv ${VENV} && rm -f ${WHEEL_MARKER}`)
   }
 }
 
@@ -64,11 +65,11 @@ async function venvHasWheels(ssh: SshSession, wheelDigest: string): Promise<bool
   return installedDigest.trim() === wheelDigest
 }
 
-// An update skips pip when the venv already holds these exact wheels; a full send always runs it. The
-// marker is written only after pip succeeds, so a pip run cut short is run again next time.
+// pip runs only when the venv does not already hold these exact wheels, whichever way the files were
+// sent. The marker is written only after pip succeeds, so a pip run cut short is run again next time.
 export async function syncVenvDeps(ssh: SshSession, ctx: EnrollContext, wheelHashes: HashesByPath): Promise<void> {
   const wheelDigest = wheelSetDigest(wheelHashes)
-  if (ctx.sendChangedFilesOnly && await venvHasWheels(ssh, wheelDigest)) return
+  if (await venvHasWheels(ssh, wheelDigest)) return
   await installVenvDeps(ssh, ctx, [...wheelHashes.keys()])
   await ssh.exec(`printf %s ${wheelDigest} > ${WHEEL_MARKER}`)
 }

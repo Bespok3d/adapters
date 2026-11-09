@@ -87,6 +87,15 @@ describe('stepDeployDaemon as an update', () => {
     expect(pipRuns(printer)).toHaveLength(1)
   })
 
+  // Whether the files go one by one or all together, pip decides on the wheels the venv already holds.
+  it('skips pip on a full send when the venv already holds these wheels', async () => {
+    const printer = await enrolledPrinter()
+
+    await stepDeployDaemon(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([])
+  })
+
   it('falls back to sending every file when the printer cannot list its hashes', async () => {
     const printer = await enrolledPrinter()
     releaseDaemon({ edited: { 'core/state.py': 'state, edited' } })

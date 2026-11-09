@@ -19,7 +19,7 @@ vi.mock('@adapter-sdk', () => ({
   unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
 }))
 
-import { installVenvDeps } from './venv'
+import { ensureVenv, installVenvDeps } from './venv'
 import { BESPOK3D, DAEMON_BASE } from './paths'
 
 type RecordedEnroll = { commands: string[], uploads: string[], ssh: SshSession }
@@ -101,5 +101,24 @@ describe('installVenvDeps', () => {
     await installVenvDeps(enroll.ssh, silentEnroll, [])
 
     expect(enroll.commands).toEqual([])
+  })
+})
+
+// pip is skipped when the venv's marker matches the wheels, so a venv made afresh must not keep the
+// marker of the one it replaces, or it would be left without its packages.
+describe('ensureVenv', () => {
+  it('clears the record of installed wheels when it makes the venv afresh', async () => {
+    const commands: string[] = []
+    const ssh = {
+      exec: async (command: string) => {
+        commands.push(command)
+
+        return command.startsWith('test -x') ? 'no' : ''
+      },
+    } as unknown as SshSession
+
+    await ensureVenv(ssh, silentEnroll)
+
+    expect(commands).toContain(`python3 -m venv ${BESPOK3D}/venv && rm -f ${BESPOK3D}/venv/.bespok3d-wheels`)
   })
 })
