@@ -6,7 +6,7 @@ import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { wifiPersistenceCommand } from './wifi-persistence'
+import { screenWifiRestoreCommand, wifiPersistenceCommand } from './wifi-persistence'
 
 const SAVED_NETWORK = 'ctrl_interface=/var/run/wpa_supplicant\nnetwork={\n\tssid="test-lan"\n}\n'
 const OLDER_NETWORK = 'network={\n\tssid="old-lan"\n}\n'
@@ -42,9 +42,13 @@ function persistWifi(tree: PrinterTree): void {
   execFileSync('sh', ['-c', wifiPersistenceCommand(tree.livePath, tree.persistentPath, credentialSources)], { stdio: 'pipe' })
 }
 
-function shellError(tree: PrinterTree): string {
+function restoreScreenWifi(tree: PrinterTree): void {
+  execFileSync('sh', ['-c', screenWifiRestoreCommand(tree.livePath, tree.screenCopy)], { stdio: 'pipe' })
+}
+
+function shellError(runCommand: (tree: PrinterTree) => void, tree: PrinterTree): string {
   try {
-    persistWifi(tree)
+    runCommand(tree)
   } catch (error) {
     return String((error as { stderr: Buffer }).stderr)
   }
@@ -65,7 +69,7 @@ describe('wifiPersistenceCommand refusing to show done', () => {
     var tree = printerTree()
     writeFileSync(tree.livePath, NO_NETWORK)
 
-    expect(shellError(tree)).toContain('No saved Wi-Fi network was found on the printer')
+    expect(shellError(persistWifi, tree)).toContain('No saved Wi-Fi network was found on the printer')
     expect(lstatSync(tree.livePath).isSymbolicLink()).toBe(false)
   })
 
@@ -74,7 +78,7 @@ describe('wifiPersistenceCommand refusing to show done', () => {
     writeFileSync(tree.screenConnection, SAVED_NETWORK)
     chmodSync(join(tree.root, 'etc'), 0o555)
 
-    expect(shellError(tree)).toContain('The printer did not keep the link to its saved Wi-Fi')
+    expect(shellError(persistWifi, tree)).toContain('The printer did not keep the link to its saved Wi-Fi')
   })
 
   it('fails with a plain message instead of keeping an older network when the copy cannot be saved', () => {
@@ -84,7 +88,7 @@ describe('wifiPersistenceCommand refusing to show done', () => {
     chmodSync(tree.persistentPath, 0o444)
     writeFileSync(tree.screenConnection, SAVED_NETWORK)
 
-    expect(shellError(tree)).toContain('The printer could not save its Wi-Fi network to its storage')
+    expect(shellError(persistWifi, tree)).toContain('The printer could not save its Wi-Fi network to its storage')
   })
 })
 
@@ -137,5 +141,75 @@ describe('wifiPersistenceCommand on a printer enrolled before', () => {
 
     expect(readFileSync(tree.persistentPath, 'utf-8')).toBe(SAVED_NETWORK)
     expect(readlinkSync(tree.livePath)).toBe(tree.persistentPath)
+  })
+})
+
+describe('screenWifiRestoreCommand on a printer enrolled for the first time', () => {
+  it('puts the screen saved copy in the live config', () => {
+    var tree = printerTree()
+    writeFileSync(tree.livePath, NO_NETWORK)
+    writeFileSync(tree.screenCopy, SAVED_NETWORK)
+
+    restoreScreenWifi(tree)
+
+    expect(readFileSync(tree.livePath, 'utf-8')).toBe(SAVED_NETWORK)
+  })
+
+  it('keeps a working live config when the screen copy has no network', () => {
+    var tree = printerTree()
+    writeFileSync(tree.livePath, SAVED_NETWORK)
+    writeFileSync(tree.screenCopy, NO_NETWORK)
+
+    restoreScreenWifi(tree)
+
+    expect(readFileSync(tree.livePath, 'utf-8')).toBe(SAVED_NETWORK)
+  })
+
+  it('goes on when the screen has no saved copy', () => {
+    var tree = printerTree()
+    writeFileSync(tree.livePath, NO_NETWORK)
+
+    restoreScreenWifi(tree)
+
+    expect(readFileSync(tree.livePath, 'utf-8')).toBe(NO_NETWORK)
+  })
+})
+
+describe('screenWifiRestoreCommand on a printer enrolled before', () => {
+  // The bug: the copy followed the link and overwrote the kept network with the screen's copy.
+  it('leaves the kept network untouched', () => {
+    var tree = printerTree()
+    mkdirSync(join(tree.root, 'userdata/cfg'), { recursive: true })
+    writeFileSync(tree.persistentPath, SAVED_NETWORK)
+    symlinkSync(tree.persistentPath, tree.livePath)
+    writeFileSync(tree.screenCopy, OLDER_NETWORK)
+
+    restoreScreenWifi(tree)
+
+    expect(readFileSync(tree.persistentPath, 'utf-8')).toBe(SAVED_NETWORK)
+    expect(readlinkSync(tree.livePath)).toBe(tree.persistentPath)
+  })
+
+  it('leaves a link whose kept file is gone to the persistence step, which keeps the screen copy', () => {
+    var tree = printerTree()
+    symlinkSync(tree.persistentPath, tree.livePath)
+    writeFileSync(tree.screenCopy, SAVED_NETWORK)
+
+    restoreScreenWifi(tree)
+    persistWifi(tree)
+
+    expect(readFileSync(tree.persistentPath, 'utf-8')).toBe(SAVED_NETWORK)
+    expect(readlinkSync(tree.livePath)).toBe(tree.persistentPath)
+  })
+})
+
+describe('screenWifiRestoreCommand when the copy fails', () => {
+  it('stops with a plain message', () => {
+    var tree = printerTree()
+    writeFileSync(tree.livePath, NO_NETWORK)
+    chmodSync(tree.livePath, 0o444)
+    writeFileSync(tree.screenCopy, SAVED_NETWORK)
+
+    expect(shellError(restoreScreenWifi, tree)).toContain('The printer could not put the Wi-Fi saved on its screen in use')
   })
 })

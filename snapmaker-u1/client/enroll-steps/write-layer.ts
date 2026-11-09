@@ -8,6 +8,8 @@ import {
   WIFI_CREDENTIAL_SOURCES,
   WIFI_LIVE_CONFIG,
   WIFI_PERSISTENT_CONFIG,
+  WIFI_SCREEN_COPY,
+  screenWifiRestoreCommand,
   wifiPersistenceCommand,
 } from '../wifi-persistence'
 
@@ -18,10 +20,7 @@ import {
 
 export async function stepUnlockOverlay(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   ctx.overlayWasActive = await writeLayerActive(ssh)
-  await ssh.exec(
-    `cp /oem/printer_data/gui/wpa_supplicant.conf /etc/wpa_supplicant.conf 2>/dev/null || true` +
-      ` && touch ${OVERLAY_DEBUG_FLAG}`
-  )
+  await ssh.exec(`${screenWifiRestoreCommand(WIFI_LIVE_CONFIG, WIFI_SCREEN_COPY)} && touch ${OVERLAY_DEBUG_FLAG}`)
 }
 
 export async function stepFixWifiPersistence(ssh: SshSession): Promise<void> {

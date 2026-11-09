@@ -34,7 +34,7 @@ export const ENROLL_STEPS: EnrollStep[] = [
     id: 'unlock-overlay',
     label: 'Preparing the printer for changes',
     detail:
-      'Touches /oem/.debug to enable the overlayfs write layer. Without this flag, writes to /oem and /etc are lost on the next reboot.',
+      'Copies the screen\'s saved Wi-Fi into /etc/wpa_supplicant.conf, unless that file is already a link or the screen\'s copy holds no network, then touches /oem/.debug to enable the overlayfs write layer. Without this flag, writes to /oem and /etc are lost on the next reboot.',
     run: (ssh, ctx) => stepUnlockOverlay(ssh, ctx),
   },
   {
