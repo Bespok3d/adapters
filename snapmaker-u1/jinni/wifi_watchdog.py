@@ -2,22 +2,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """The U1's wifi self-heal watchdog.
 
-A background loop that restores the stock wifi credentials and bounces wlan0 whenever the interface
-is present but has lost its IP. This is a device-realm resilience task the jinni runs in the
-background, NOT part of the jinni contract surface, so it lives on its own next to the jinni class.
+A background loop that keeps the live Wi-Fi config linked to its copy in /userdata, and restores the
+stock wifi credentials and bounces wlan0 whenever the interface is present but has lost its IP. This
+is a device-realm resilience task the jinni runs in the background, NOT part of the jinni contract
+surface, so it lives on its own next to the jinni class.
 """
 import asyncio
 import logging
 import subprocess
 from pathlib import Path
 
+from wifi_persistence import keep_live_wifi, saved_network
+
 WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
 WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
+WIFI_PERSISTENT_CONFIG = Path("/userdata/cfg/wpa_config.conf")
 WLAN_IFACE = "wlan0"
 WATCHDOG_INTERVAL_S = 30
 IP_TIMEOUT_S = 10
 IFUPDOWN_TIMEOUT_S = 60
-SAVED_NETWORK_MARK = b"network="
 COPY_FAILED = (
     "The printer could not put the Wi-Fi saved on its screen in use,"
     " so its Wi-Fi may not come back: %s"
@@ -43,25 +46,16 @@ def wlan_has_ip() -> bool:
     return "inet " in result.stdout
 
 
-# Read as bytes: a network name need not be valid UTF-8, and decoding it could fail.
-def _saved_network(config: Path) -> bytes:
-    """The config as it is when it holds a saved network, else nothing."""
-    if not config.is_file():
-        return b""
-    content = config.read_bytes()
-    return content if SAVED_NETWORK_MARK in content else b""
-
-
 def _saved_network_kept(live_config: Path) -> bool:
     """A printer enrolled before keeps its network in /userdata, and the live config links there."""
-    return live_config.is_symlink() and bool(_saved_network(live_config))
+    return live_config.is_symlink() and bool(saved_network(live_config))
 
 
 def _copy_screen_wifi(screen_copy: Path, live_config: Path) -> None:
     # Writing through the link would replace the kept network with the screen's copy.
     if _saved_network_kept(live_config):
         return
-    screen_wifi = _saved_network(screen_copy)
+    screen_wifi = saved_network(screen_copy)
     if screen_wifi:
         live_config.write_bytes(screen_wifi)
 
@@ -87,8 +81,13 @@ def _restore_wifi() -> None:
 
 
 def _check_and_heal() -> None:
-    if _wlan_exists() and not wlan_has_ip():
-        _restore_wifi()
+    # The link goes back first, because the restore keeps a network only when the live config links
+    # to it. A failure to put it back must not stop the restore, so the restore runs regardless.
+    try:
+        keep_live_wifi(WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
+    finally:
+        if _wlan_exists() and not wlan_has_ip():
+            _restore_wifi()
 
 
 def _failure_detail(error: Exception) -> str:

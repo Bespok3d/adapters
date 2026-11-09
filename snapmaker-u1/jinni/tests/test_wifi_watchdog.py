@@ -5,10 +5,18 @@ import logging
 from pathlib import Path
 
 import pytest
+import wifi_persistence
 import wifi_watchdog
 
 SCREEN_NETWORK = 'network={ ssid="old-lan" }'
 KEPT_NETWORK = 'network={ ssid="home" }'
+
+
+# The watchdog's real configs are this machine's own, so no test may reach them.
+@pytest.fixture(autouse=True)
+def _no_real_wifi_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", tmp_path / "unused-live.conf")
+    monkeypatch.setattr(wifi_watchdog, "WIFI_PERSISTENT_CONFIG", tmp_path / "unused-kept.conf")
 
 
 def test_heals_only_when_the_interface_is_up_without_an_ip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -217,3 +225,102 @@ def test_a_round_that_works_again_says_so(
         assert wifi_watchdog._heal_round("ifdown not found") == ""
         assert wifi_watchdog._heal_round("") == ""
     assert caplog.messages == [wifi_watchdog.HEAL_WORKS_AGAIN]
+
+
+SCREEN_SAVED_CONFIG = 'ctrl_interface=/var/run/wpa_supplicant\nnetwork={ ssid="new-lan" }\n'
+
+
+def _wifi_configs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
+    """The live and the persistent Wi-Fi config, on a printer whose wlan0 is missing."""
+    live_config = tmp_path / "wpa_supplicant.conf"
+    persistent_config = tmp_path / "wpa_config.conf"
+    monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", live_config)
+    monkeypatch.setattr(wifi_watchdog, "WIFI_PERSISTENT_CONFIG", persistent_config)
+    monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: False)
+    return live_config, persistent_config
+
+
+# The bug: the screen's wpa_supplicant saved by renaming a new file over the link, so later Wi-Fi
+# changes stayed in the overlay and were lost on a firmware update.
+def test_puts_the_link_back_after_the_screen_replaced_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    persistent_config.write_text(KEPT_NETWORK)
+    live_config.write_text(SCREEN_SAVED_CONFIG)
+    wifi_watchdog._check_and_heal()
+    assert persistent_config.read_text() == SCREEN_SAVED_CONFIG
+    assert live_config.is_symlink()
+    assert live_config.readlink() == persistent_config
+    config_names = {entry.name for entry in tmp_path.iterdir()}
+    assert config_names == {live_config.name, persistent_config.name}
+
+
+def test_leaves_a_live_config_that_still_links(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    persistent_config.write_text(KEPT_NETWORK)
+    live_config.symlink_to(persistent_config)
+    wifi_watchdog._check_and_heal()
+    assert persistent_config.read_text() == KEPT_NETWORK
+    assert live_config.readlink() == persistent_config
+
+
+def test_leaves_a_live_config_without_a_network(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    persistent_config.write_text(KEPT_NETWORK)
+    live_config.write_text("ctrl_interface=/var/run/wpa_supplicant\n")
+    wifi_watchdog._check_and_heal()
+    assert persistent_config.read_text() == KEPT_NETWORK
+    assert not live_config.is_symlink()
+
+
+def test_leaves_a_printer_that_never_set_up_the_persistent_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    live_config.write_text(SCREEN_SAVED_CONFIG)
+    wifi_watchdog._check_and_heal()
+    assert not persistent_config.exists()
+    assert live_config.read_text() == SCREEN_SAVED_CONFIG
+
+
+def test_restarts_the_wifi_even_when_the_link_cannot_go_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    healed = []
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    persistent_config.write_text(KEPT_NETWORK)
+    live_config.write_text(SCREEN_SAVED_CONFIG)
+    # A directory where the new persistent config is staged cannot be cleared, so the copy fails.
+    (tmp_path / (persistent_config.name + wifi_persistence.STAGING_SUFFIX)).mkdir()
+    monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
+    monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: False)
+    with pytest.raises(OSError):
+        wifi_watchdog._check_and_heal()
+    assert healed == ["heal"]
+    assert persistent_config.read_text() == KEPT_NETWORK
+
+
+def test_the_kept_copy_keeps_its_permissions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    live_config, persistent_config = _wifi_configs(monkeypatch, tmp_path)
+    persistent_config.write_text(KEPT_NETWORK)
+    persistent_config.chmod(0o600)
+    live_config.write_text(SCREEN_SAVED_CONFIG)
+    wifi_watchdog._check_and_heal()
+    assert persistent_config.stat().st_mode & 0o777 == 0o600
+
+
+# Enrollment sets the link up from the client's paths; the watchdog must heal the same ones.
+def test_heals_the_paths_enrollment_links(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.undo()
+    client_paths_file = Path(__file__).resolve().parents[2] / "client" / "wifi-persistence.ts"
+    client_paths = client_paths_file.read_text()
+    assert f"WIFI_LIVE_CONFIG = '{wifi_watchdog.WIFI_CRED_DST}'" in client_paths
+    assert f"WIFI_PERSISTENT_CONFIG = '{wifi_watchdog.WIFI_PERSISTENT_CONFIG}'" in client_paths

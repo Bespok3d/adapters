@@ -15,6 +15,10 @@ cannot be put back, the printer says so in its log. If restarting the Wi-Fi fail
 now says so in its log and tries again 30 seconds later. Before, some failures made it stop trying
 until the printer was restarted.
 
+A Wi-Fi network changed on the printer's screen after Bespok3d was set up was lost after a firmware
+update. Saving it on the screen stopped the printer from keeping it where updates do not reach. The
+printer now notices within 30 seconds and keeps the network there again.
+
 After a restart the screen could show Wi-Fi off while the printer was connected. When that happens,
 the printer now restarts the screen app once, and the screen shows Wi-Fi on.
 
