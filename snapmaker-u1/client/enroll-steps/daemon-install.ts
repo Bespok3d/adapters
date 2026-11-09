@@ -3,11 +3,12 @@
 import { openSystemPackage } from '@adapter-sdk'
 import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
-import { uploadAdapterJinni } from '../jinni-deploy'
-import { removePackageEntries, uploadPayload } from '../package-deploy'
+import { openJinniSource } from '../jinni-deploy'
+import { syncPayload } from '../package-deploy'
+import { sha256Of } from '../payload-hashes'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
-import { cleanSystemPython, ensureVenv, installVenvDeps } from '../venv'
+import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
 
 // Putting the daemon on the printer: its Python source, the device-side jinni it drives, its autostart
 // script, and its own virtualenv. Every byte comes out of the signed daemon package: the published one
@@ -27,13 +28,11 @@ const WHEEL_DIR = 'wheels/'
 // An earlier release created this under a misspelled name; a printer carrying it gets it cleared.
 const LEGACY_DIR = `${BESPOK3D}/var/lib/demon`
 
-// How this step's own progress bar is shared out. The two uploads are the bulk of it and the only
-// parts whose size is known before they start, so they own most of the bar and move it a file at a
-// time; the daemon carries far more files than the jinni, hence the split. The tail is one pip run
-// installing the wheels, and nothing here can see inside it, so the bar holds at the last mark until
-// the step finishes rather than inventing movement.
-const DAEMON_UPLOAD_SPAN = { from: 0, to: 0.75 }
-const JINNI_UPLOAD_SPAN = { from: 0.75, to: 0.88 }
+// How this step's own progress bar is shared out. The upload of the daemon and the jinni together is
+// the bulk of it and the only part whose size is known before it starts, so it owns most of the bar and
+// moves it a file at a time. The tail is one pip run installing the wheels, and nothing here can see
+// inside it, so the bar holds at the last mark until the step finishes rather than inventing movement.
+const UPLOAD_SPAN = { from: 0, to: 0.88 }
 const AUTOSTART_MARK = 0.9
 
 function daemonRuntimePaths(signedPackage: BundledPackage): readonly string[] {
@@ -47,24 +46,30 @@ async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signed
   await ssh.exec(`chmod 755 ${autostartPath}`)
 }
 
+function wheelHashes(signedPackage: BundledPackage, runtimePaths: readonly string[]): Map<string, string> {
+  const wheelPaths = runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR))
+
+  return new Map(wheelPaths.map((wheelPath) => [wheelPath, sha256Of(signedPackage.payloadBytes(wheelPath))]))
+}
+
+// The daemon and the jinni share the daemon's directory, so they travel in one stream. An update sends
+// only the files the printer does not already hold, and runs pip only when a wheel changed.
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)
-  ctx.onProgress?.('Creating directories…', DAEMON_UPLOAD_SPAN.from)
+  ctx.onProgress?.('Creating directories…', UPLOAD_SPAN.from)
   await ssh.exec(`rm -rf ${LEGACY_DIR}`)
-  await removePackageEntries(ssh, DAEMON_BASE, runtimePaths)
-  await uploadPayload({
+  await syncPayload({
     ssh,
-    signedPackage,
     remoteBase: DAEMON_BASE,
-    payloadPaths: runtimePaths,
+    sources: [{ signedPackage, payloadPaths: runtimePaths }, await openJinniSource()],
+    sendChangedFilesOnly: ctx.sendChangedFilesOnly,
     progressLabel: 'Uploading daemon files…',
     onProgress: ctx.onProgress,
-    progressSpan: DAEMON_UPLOAD_SPAN,
+    progressSpan: UPLOAD_SPAN,
   })
-  await uploadAdapterJinni(ssh, ctx, JINNI_UPLOAD_SPAN)
   await deployAutostartScript(ssh, ctx, signedPackage)
   await cleanSystemPython(ssh)
   await ensureVenv(ssh, ctx)
-  await installVenvDeps(ssh, ctx, runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR)))
+  await syncVenvDeps(ssh, ctx, wheelHashes(signedPackage, runtimePaths))
 }

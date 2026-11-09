@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
 
-import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
+import type { BundledPackage, EnrollContext } from '@adapter-sdk'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../../Bespok3d-desktop', import.meta.url)) },
@@ -23,75 +23,25 @@ vi.mock('@adapter-sdk', () => ({
 }))
 
 import { stepDeployDaemon } from './daemon-install'
+import { fakePackage, JINNI_PAYLOAD, packagedContent } from '../fake-packages'
+import { fakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE, ADAPTER_JINNI_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 
-const DAEMON_PAYLOAD = [
+const DAEMON_RUNTIME = [
   'daemon.py',
   'version.py',
   'api/routes.py',
   'core/state.py',
+  'core/legacy.py',
   'wheels/fastapi-0.115.0-py3-none-any.whl',
-  's10bespok3d-daemon',
-  'S99bespok3d',
 ]
 
-const JINNI_PAYLOAD = ['bespok3d_jinni.py', 'jinni/board.py', 'paths.json', 'version.json']
-
-// The marker proves provenance: an upload carrying it can only have come from the package member, so a
-// second copy read off a source tree would fail these tests rather than pass them silently.
-function fakePackage(packageName: string, payloadPaths: readonly string[]): BundledPackage {
-  return {
-    name: packageName,
-    version: '0.0.0',
-    trust: 'unknown',
-    payloadPaths,
-    payloadBytes: (payloadPath: string) => Buffer.from(`from ${packageName}: ${payloadPath}`),
-  }
-}
-
-const MACHINERY_PAYLOADS: Record<string, readonly string[]> = {
-  [DAEMON_PACKAGE]: DAEMON_PAYLOAD,
-  [ADAPTER_JINNI_PACKAGE]: JINNI_PAYLOAD,
-}
-
 function stubBundledPackages(): void {
-  openedPackages.open = async (packageName: string) => {
-    const payloadPaths = MACHINERY_PAYLOADS[packageName]
-    if (!payloadPaths) throw new Error(`unexpected package ${packageName}`)
-
-    return fakePackage(packageName, payloadPaths)
-  }
-}
-
-type RecordedUpload = { remotePath: string, content: string }
-type RecordedEnroll = { commands: string[], uploads: RecordedUpload[], ssh: SshSession }
-
-function recordingSession(): RecordedEnroll {
-  const commands: string[] = []
-  const uploads: RecordedUpload[] = []
-  const ssh = {
-    exec: async (command: string) => {
-      commands.push(command)
-
-      return ''
-    },
-    putBytes: async (remotePath: string, content: Buffer) => {
-      uploads.push({ remotePath, content: content.toString('utf-8') })
-    },
-  } as unknown as SshSession
-
-  return { commands, uploads, ssh }
+  openedPackages.open = async (packageName: string) => fakePackage(packageName)
 }
 
 const silentEnroll = {} as EnrollContext
-
-function removedPaths(commands: readonly string[]): string[] {
-  return commands
-    .filter((command) => command.startsWith('rm -rf '))
-    .flatMap((command) => command.slice('rm -rf '.length).split(' '))
-    .map((removed) => removed.replace(/^'|'$/g, ''))
-}
 
 describe('stepDeployDaemon', () => {
   // The whole point of the stage: a package whose signature does not check out must not put a byte on
@@ -100,69 +50,72 @@ describe('stepDeployDaemon', () => {
     openedPackages.open = async () => {
       throw new Error('the signature on the package for "bespok3d-daemon" does not check out')
     }
-    const enroll = recordingSession()
+    const printer = fakePrinter()
 
-    await expect(stepDeployDaemon(enroll.ssh, silentEnroll)).rejects.toThrow('does not check out')
+    await expect(stepDeployDaemon(printer.ssh, silentEnroll)).rejects.toThrow('does not check out')
 
-    expect(enroll.uploads).toEqual([])
-    expect(enroll.commands).toEqual([])
+    expect(printer.files.size).toBe(0)
+    expect(printer.commands).toEqual([])
   })
 
-  it('uploads the daemon runtime from the package, and the init scripts nowhere near the runtime tree', async () => {
+  it('places the daemon runtime from the package, and the init scripts nowhere near the runtime tree', async () => {
     stubBundledPackages()
-    const enroll = recordingSession()
+    const printer = fakePrinter()
 
-    await stepDeployDaemon(enroll.ssh, silentEnroll)
+    await stepDeployDaemon(printer.ssh, silentEnroll)
 
-    const daemonUploads = enroll.uploads.filter((upload) => upload.content.startsWith(`from ${DAEMON_PACKAGE}:`))
-    expect(daemonUploads.map((upload) => upload.remotePath)).toEqual([
-      `${DAEMON_BASE}/daemon.py`,
-      `${DAEMON_BASE}/version.py`,
-      `${DAEMON_BASE}/api/routes.py`,
-      `${DAEMON_BASE}/core/state.py`,
-      `${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl`,
-      `${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`,
-    ])
-    expect(enroll.uploads.some((upload) => upload.remotePath.includes('S99bespok3d'))).toBe(false)
+    DAEMON_RUNTIME.forEach((payloadPath) => {
+      expect(printer.files.get(`${DAEMON_BASE}/${payloadPath}`)?.toString()).toBe(packagedContent(DAEMON_PACKAGE, payloadPath))
+    })
+    expect(printer.files.get(`${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`)?.toString())
+      .toBe(packagedContent(DAEMON_PACKAGE, 's10bespok3d-daemon'))
+    expect([...printer.files.keys()].some((filePath) => filePath.includes('S99bespok3d'))).toBe(false)
+    expect(printer.files.has(`${DAEMON_BASE}/s10bespok3d-daemon`)).toBe(false)
   })
 
   // ADR-0037: the jinni is its own signed package, and the files placed on the printer are its payload,
   // never a copy read out of the adapter checkout the app was built from.
-  it('uploads the jinni from the jinni package alone', async () => {
+  it('places the jinni from the jinni package alone', async () => {
     stubBundledPackages()
-    const enroll = recordingSession()
+    const printer = fakePrinter()
 
-    await stepDeployDaemon(enroll.ssh, silentEnroll)
+    await stepDeployDaemon(printer.ssh, silentEnroll)
 
-    const jinniUploads = enroll.uploads.filter((upload) => upload.content.startsWith(`from ${ADAPTER_JINNI_PACKAGE}:`))
-    expect(jinniUploads.map((upload) => upload.remotePath)).toEqual(JINNI_PAYLOAD.map((payloadPath) => `${DAEMON_BASE}/${payloadPath}`))
-    expect(enroll.uploads.every((upload) => upload.content.startsWith('from '))).toBe(true)
+    JINNI_PAYLOAD.forEach((payloadPath) => {
+      expect(printer.files.get(`${DAEMON_BASE}/${payloadPath}`)?.toString()).toBe(packagedContent(ADAPTER_JINNI_PACKAGE, payloadPath))
+    })
   })
 
+  // Enrollment and repair send everything, so a printer whose files were damaged in place is put right
+  // even where its hashes would never be asked.
+  it('sends every daemon and jinni file in one stream when it is not an update', async () => {
+    stubBundledPackages()
+    const printer = fakePrinter()
+
+    await stepDeployDaemon(printer.ssh, silentEnroll)
+    await stepDeployDaemon(printer.ssh, silentEnroll)
+
+    expect(printer.streams).toHaveLength(2)
+    expect(printer.streams[1].sort()).toEqual([...DAEMON_RUNTIME, ...JINNI_PAYLOAD].sort())
+    expect(printer.commands.filter((command) => command.includes('sha256sum'))).toEqual([])
+  })
 })
 
-// The step is minutes long and uploads over a hundred files. A bar that cannot move while the file
-// count beside it climbs reads as a hung app, so every phase that knows its own size reports how far
-// through it is, and each phase owns a slice of the bar so the reported number only ever climbs.
+// The step is minutes long and sends over a hundred files. A bar that cannot move while the file
+// count beside it climbs reads as a hung app, so the upload reports how far through it is, and owns a
+// slice of the bar so the reported number only ever climbs.
 describe('stepDeployDaemon progress', () => {
-  function reportedFractions(reports: [string, number | undefined][], label: string): number[] {
-    return reports.filter(([hint]) => hint.startsWith(label)).map(([, fraction]) => fraction ?? -1)
-  }
-
-  it('advances a file at a time through each upload and never reports backwards', async () => {
+  it('advances a file at a time through the upload and never reports backwards', async () => {
     stubBundledPackages()
-    const enroll = recordingSession()
+    const printer = fakePrinter()
     const reports: [string, number | undefined][] = []
     const watchedEnroll = { onProgress: (hint: string, stepFraction?: number) => { reports.push([hint, stepFraction]) } } as EnrollContext
 
-    await stepDeployDaemon(enroll.ssh, watchedEnroll)
+    await stepDeployDaemon(printer.ssh, watchedEnroll)
 
-    const daemonFractions = reportedFractions(reports, 'Uploading daemon files…')
-    const jinniFractions = reportedFractions(reports, 'Uploading jinni…')
-    expect(daemonFractions).toHaveLength(5)
-    expect(jinniFractions).toHaveLength(JINNI_PAYLOAD.length)
-    expect(daemonFractions[daemonFractions.length - 1]).toBeCloseTo(0.75)
-    expect(jinniFractions[jinniFractions.length - 1]).toBeCloseTo(0.88)
+    const uploadFractions = reports.filter(([hint]) => hint.startsWith('Uploading daemon files…')).map(([, fraction]) => fraction ?? -1)
+    expect(uploadFractions).toHaveLength(DAEMON_RUNTIME.length + JINNI_PAYLOAD.length)
+    expect(uploadFractions[uploadFractions.length - 1]).toBeCloseTo(0.88)
     const allFractions = reports.map(([, fraction]) => fraction).filter((fraction) => fraction !== undefined)
     expect(allFractions).toEqual([...allFractions].sort((earlier, later) => earlier - later))
   })
@@ -171,36 +124,34 @@ describe('stepDeployDaemon progress', () => {
 describe('stepDeployDaemon over an already enrolled printer', () => {
   // Installing over an existing tree clears what the two packages own and nothing else, so a printer
   // that is already enrolled keeps its certificate, its token, its daemon data and its installed
-  // plugins through a reinstall.
-  it("preserves the printer's own files when it installs over an existing tree", async () => {
+  // plugins through a reinstall, while a file the package no longer carries goes.
+  it("preserves the printer's own files and drops the package's stale ones", async () => {
     stubBundledPackages()
-    const enroll = recordingSession()
+    const printerOwned = {
+      [`${BESPOK3D}/etc/token`]: 'token',
+      [`${BESPOK3D}/var/lib/plugins/camera/manifest.json`]: '{}',
+      [`${DAEMON_BASE}/data/state.json`]: '{}',
+    }
+    const printer = fakePrinter({
+      ...printerOwned,
+      [`${DAEMON_BASE}/api/retired_route.py`]: 'old',
+      [`${BESPOK3D}/var/lib/demon/daemon.py`]: 'misspelled',
+    })
 
-    await stepDeployDaemon(enroll.ssh, silentEnroll)
+    await stepDeployDaemon(printer.ssh, silentEnroll)
 
-    expect(removedPaths(enroll.commands).sort()).toEqual([
-      `${BESPOK3D}/var/lib/demon`,
-      `${DAEMON_BASE}/api`,
-      `${DAEMON_BASE}/bespok3d_jinni.py`,
-      `${DAEMON_BASE}/core`,
-      `${DAEMON_BASE}/daemon.py`,
-      `${DAEMON_BASE}/jinni`,
-      `${DAEMON_BASE}/paths.json`,
-      `${DAEMON_BASE}/version.json`,
-      `${DAEMON_BASE}/version.py`,
-      `${DAEMON_BASE}/wheels`,
-    ].sort())
-    const preserved = [`${BESPOK3D}/etc`, `${BESPOK3D}/var/lib/plugins`, `${DAEMON_BASE}/data`, DAEMON_BASE, BESPOK3D]
-    preserved.forEach((printerOwnedPath) => expect(removedPaths(enroll.commands)).not.toContain(printerOwnedPath))
+    Object.keys(printerOwned).forEach((printerOwnedPath) => expect(printer.files.has(printerOwnedPath)).toBe(true))
+    expect(printer.files.has(`${DAEMON_BASE}/api/retired_route.py`)).toBe(false)
+    expect(printer.files.has(`${BESPOK3D}/var/lib/demon/daemon.py`)).toBe(false)
   })
 
   it('installs the wheels the package carries, offline, from files already on the printer', async () => {
     stubBundledPackages()
-    const enroll = recordingSession()
+    const printer = fakePrinter()
 
-    await stepDeployDaemon(enroll.ssh, silentEnroll)
+    await stepDeployDaemon(printer.ssh, silentEnroll)
 
-    const installCommand = enroll.commands.find((command) => command.includes('pip install'))
+    const installCommand = printer.commands.find((command) => command.includes('pip install'))
     expect(installCommand).toBe(
       `${BESPOK3D}/venv/bin/pip install --no-index --no-deps '${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl'`,
     )

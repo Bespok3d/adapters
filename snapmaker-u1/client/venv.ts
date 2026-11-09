@@ -3,9 +3,15 @@
 import { shellQuote } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
+import { sha256Of } from './payload-hashes'
+import type { HashesByPath } from './payload-hashes'
+
 import { BESPOK3D, DAEMON_BASE } from './paths'
 
 const VENV = `${BESPOK3D}/venv`
+
+// What the last successful pip run installed: one digest over the wheels' paths and hashes.
+const WHEEL_MARKER = `${VENV}/.bespok3d-wheels`
 
 // The daemon must never pip into the system, Klipper, or Moonraker interpreters. A prior enroll may
 // have leaked daemon deps into the overlay's system site-packages; strip them so only the venv carries
@@ -44,4 +50,25 @@ export async function installVenvDeps(ssh: SshSession, ctx: EnrollContext, wheel
   const wheelFiles = wheelPaths.map((wheelPath) => shellQuote(`${DAEMON_BASE}/${wheelPath}`)).join(' ')
 
   await ssh.exec(`${VENV}/bin/pip install --no-index --no-deps ${wheelFiles}`)
+}
+
+function wheelSetDigest(wheelHashes: HashesByPath): string {
+  const wheelLines = [...wheelHashes].map(([wheelPath, wheelHash]) => `${wheelPath} ${wheelHash}\n`).sort()
+
+  return sha256Of(Buffer.from(wheelLines.join('')))
+}
+
+async function venvHasWheels(ssh: SshSession, wheelDigest: string): Promise<boolean> {
+  const installedDigest = await ssh.exec(`cat ${WHEEL_MARKER} 2>/dev/null; true`)
+
+  return installedDigest.trim() === wheelDigest
+}
+
+// An update skips pip when the venv already holds these exact wheels; a full send always runs it. The
+// marker is written only after pip succeeds, so a pip run cut short is run again next time.
+export async function syncVenvDeps(ssh: SshSession, ctx: EnrollContext, wheelHashes: HashesByPath): Promise<void> {
+  const wheelDigest = wheelSetDigest(wheelHashes)
+  if (ctx.sendChangedFilesOnly && await venvHasWheels(ssh, wheelDigest)) return
+  await installVenvDeps(ssh, ctx, [...wheelHashes.keys()])
+  await ssh.exec(`printf %s ${wheelDigest} > ${WHEEL_MARKER}`)
 }
