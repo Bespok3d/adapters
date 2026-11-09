@@ -101,13 +101,29 @@ def _named_by_klipper(klipper_info: dict) -> LiveLog | None:
     return LiveLog(Path(named_path), REPORTED_BY_KLIPPER)
 
 
-def _fresh_configured(configured_path: str, now: float) -> LiveLog | None:
-    modified_at = _modified_at(Path(configured_path)) if configured_path else None
+def _configured_candidates(configured_paths: str) -> tuple[Path, ...]:
+    """Firmware versions that log to different places are all named, joined by os.pathsep."""
+    return tuple(Path(log_path) for log_path in configured_paths.split(os.pathsep) if log_path)
+
+
+def _configured_log_name(configured_paths: str) -> str:
+    return next((candidate.name for candidate in _configured_candidates(configured_paths)), "")
+
+
+def _fresh_candidate(configured_path: Path, now: float) -> LiveLog | None:
+    modified_at = _modified_at(configured_path)
     if modified_at is None or now - modified_at > FRESH_LOG_WINDOW_S:
         return None
     age_s = int(now - modified_at)
     origin = f"configured path, no running process holds it, last written {age_s}s ago"
-    return LiveLog(Path(configured_path), origin)
+    return LiveLog(configured_path, origin)
+
+
+def _fresh_configured(configured_paths: str, now: float) -> LiveLog | None:
+    """The most recently written of the configured logs, if any was written recently."""
+    fresh = tuple(filter(None, (_fresh_candidate(configured_path, now)
+                                for configured_path in _configured_candidates(configured_paths))))
+    return max(fresh, default=None, key=lambda live_log: _modified_at(live_log.path) or 0.0)
 
 
 def _klipper_pids(klipper_info: dict, proc_root: Path) -> tuple[int, ...]:
@@ -118,16 +134,17 @@ def _klipper_pids(klipper_info: dict, proc_root: Path) -> tuple[int, ...]:
     return service_pids(KLIPPER_SCRIPTS, proc_root)
 
 
-def locate_klipper_log(klipper_info: dict, configured_path: str,
+def locate_klipper_log(klipper_info: dict, configured_paths: str,
                        proc_root: Path, now: float) -> LiveLog | None:
-    klipper_log_name = Path(_reported_log_path(klipper_info) or configured_path).name
+    klipper_log_name = (Path(_reported_log_path(klipper_info)).name
+                        or _configured_log_name(configured_paths))
     return (_held_by(_klipper_pids(klipper_info, proc_root), proc_root, klipper_log_name)
             or _named_by_klipper(klipper_info)
-            or _fresh_configured(configured_path, now))
+            or _fresh_configured(configured_paths, now))
 
 
-def locate_moonraker_log(configured_path: str, proc_root: Path, now: float) -> LiveLog | None:
+def locate_moonraker_log(configured_paths: str, proc_root: Path, now: float) -> LiveLog | None:
     """Moonraker serves no log path over its API, so only /proc proves its live log."""
     return (_held_by(service_pids(MOONRAKER_SCRIPTS, proc_root), proc_root,
-                     Path(configured_path).name)
-            or _fresh_configured(configured_path, now))
+                     _configured_log_name(configured_paths))
+            or _fresh_configured(configured_paths, now))

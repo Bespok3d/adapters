@@ -48,7 +48,8 @@ def test_version_is_not_a_module_constant() -> None:
 def test_paths_expose_site_packages_and_service_logs() -> None:
     paths = SnapmakerU1Jinni().paths()
     assert paths["PYTHON_SITE_PACKAGES"] == "/usr/lib/python3.11/site-packages"
-    assert paths["KLIPPER_LOG"] == "/oem/printer_data/logs/klippy.log"
+    # Firmware 2.0 and later log here; earlier firmware logs to the second path.
+    assert paths["KLIPPER_LOG"] == "/oem/klippylogs/klippy.log:/oem/printer_data/logs/klippy.log"
     assert paths["MOONRAKER_LOG"] == "/oem/printer_data/logs/moonraker.log"
 
 

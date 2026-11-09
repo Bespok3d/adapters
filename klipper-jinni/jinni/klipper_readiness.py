@@ -14,11 +14,14 @@ from dataclasses import dataclass, field, replace
 from .inspection import ServiceProbe
 from .printer_comms import klippy
 
-KLIPPER_RETRIES = 6
-KLIPPER_RETRY_DELAY_S = 5
+KLIPPER_WAIT_S = 30
+KLIPPER_POLL_S = 1
 
 _KLIPPER_INFO_URL = "http://localhost:7125/printer/info"
 _READY_STATE = "ready"
+# Klipper leaves "error" (config or MCU failure) and "shutdown" (halted) only on a restart, so
+# asking again cannot change the answer. Only "startup", or no answer yet, is worth waiting on.
+_SETTLED_STATES = frozenset({_READY_STATE, "error", "shutdown"})
 
 
 @dataclass(frozen=True)
@@ -64,17 +67,20 @@ def _klipper_ready_once(socket_path: str, service_get: ServiceProbe) -> KlipperR
 
 def _with_known_info(readiness: KlipperReadiness, known_info: dict) -> KlipperReadiness:
     """A later attempt can get no reply from Klipper (socket briefly gone, HTTP behind a login);
-    the error an earlier reply named still explains the failure."""
+    what an earlier reply said (its state, its process and log) still explains the failure."""
     return readiness if readiness.info else replace(readiness, info=known_info)
 
 
+def _settled(readiness: KlipperReadiness) -> bool:
+    return readiness.ready or str(readiness.info.get("state", "")) in _SETTLED_STATES
+
+
 def klipper_healthy(socket_path: str, service_get: ServiceProbe) -> KlipperReadiness:
-    """Klipper's readiness, retrying while it is still coming back after a restart."""
-    readiness = KlipperReadiness(ready=False, detail="")
-    for attempt in range(KLIPPER_RETRIES):
+    """Klipper's readiness once its state has settled, asking every `KLIPPER_POLL_S` while it is
+    still starting after a restart, for at most `KLIPPER_WAIT_S`."""
+    deadline = time.monotonic() + KLIPPER_WAIT_S
+    readiness = _klipper_ready_once(socket_path, service_get)
+    while not _settled(readiness) and time.monotonic() < deadline:
+        time.sleep(KLIPPER_POLL_S)
         readiness = _with_known_info(_klipper_ready_once(socket_path, service_get), readiness.info)
-        if readiness.ready:
-            return readiness
-        if attempt < KLIPPER_RETRIES - 1:
-            time.sleep(KLIPPER_RETRY_DELAY_S)
     return readiness

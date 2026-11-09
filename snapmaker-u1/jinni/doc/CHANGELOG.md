@@ -22,7 +22,12 @@ When a plugin stopped Klipper from starting, Bespok3d sometimes failed to notice
 was, so it did not switch that plugin off and the printer stayed stopped. On firmware 2.1 it was
 reading an old Klipper log that the printer no longer writes. It now reads the log the running
 Klipper and Moonraker really write, starts from the error Klipper itself reports, and never trusts
-an old log.
+an old log. When a plugin's code made Klipper's own code fail, Bespok3d now still finds the plugin,
+instead of looking only at the last file in the error.
+
+When Klipper had stopped, the printer waited about 25 seconds before saying so, at every check.
+It now says so at once, and while Klipper is still starting it checks every second, so a plugin
+that stops Klipper is switched off within seconds.
 
 ## 0.1.11
 

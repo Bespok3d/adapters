@@ -10,6 +10,7 @@ log, or an error an earlier run left behind, says nothing about what broke now.
 """
 import re
 from collections.abc import Callable
+from itertools import takewhile
 
 from protocol import FailureSignals
 
@@ -21,24 +22,48 @@ _CONFIG_SECTION_RE = re.compile(r"(?:[Ss]ection|config object)\s+'([^']+)'")
 _NO_MODULE_RE = re.compile(r"No module named '([^']+)'")
 _IMPORT_ERROR_RE = re.compile(r"(?:ImportError|ModuleNotFoundError):[^\n]*?'([A-Za-z0-9_.]+)'")
 _TRACEBACK_FILE_RE = re.compile(r'File "(/[^"]+\.py)"')
+# Only a header at the start of a line: an exception group's own sub-tracebacks are indented.
+_TRACEBACK_START_RE = re.compile(r"^Traceback \(most recent call last\):", re.MULTILINE)
+_CHAINED_EXCEPTION_MARKERS = (
+    "During handling of the above exception, another exception occurred:",
+    "The above exception was the direct cause of the following exception:",
+)
 
 
-def _failing_config_section(log_text: str) -> str | None:
+def _failing_config_section(log_text: str) -> tuple[str, ...]:
     match = _CONFIG_SECTION_RE.search(log_text)
-    return match.group(1).strip() if match else None
+    return (match.group(1).strip(),) if match else ()
 
 
-def _failing_import_module(log_text: str) -> str | None:
+def _failing_import_module(log_text: str) -> tuple[str, ...]:
     for pattern in (_NO_MODULE_RE, _IMPORT_ERROR_RE):
         match = pattern.search(log_text)
         if match:
-            return match.group(1).split(".")[0]
-    return None
+            return (match.group(1).split(".")[0],)
+    return ()
 
 
-def _failing_file(log_text: str) -> str | None:
-    matches = _TRACEBACK_FILE_RE.findall(log_text)
-    return matches[-1] if matches else None
+def _chains_into_next(traceback_block: str) -> bool:
+    return traceback_block.rstrip().endswith(_CHAINED_EXCEPTION_MARKERS)
+
+
+def _last_traceback(log_text: str) -> str:
+    """The last traceback in the text, together with the tracebacks Python chained in front of it.
+    An earlier traceback that stands alone is an error the service survived, so it is left out. A
+    text without a traceback header is taken whole."""
+    tracebacks = _TRACEBACK_START_RE.split(log_text)[1:]
+    if not tracebacks:
+        return log_text
+    chained_newest_first = list(takewhile(_chains_into_next, reversed(tracebacks[:-1])))
+    return "\n".join([*reversed(chained_newest_first), tracebacks[-1]])
+
+
+def _failing_files(log_text: str) -> tuple[str, ...]:
+    """Every file in the failing traceback, the frame that raised first. The last frame is often
+    Klipper's own code called by a plugin, so the daemon gets them all and blames the first one a
+    plugin placed."""
+    frames = _TRACEBACK_FILE_RE.findall(_last_traceback(log_text))
+    return tuple(dict.fromkeys(reversed(frames)))
 
 
 def _format_tails(labelled_tails: tuple[tuple[str, str], ...]) -> str:
@@ -50,10 +75,9 @@ def _format_tails(labelled_tails: tuple[tuple[str, str], ...]) -> str:
     return "\n\n".join(sections)
 
 
-def _first_signal(extract: Callable[[str], str | None],
+def _first_signal(extract: Callable[[str], tuple[str, ...]],
                   texts_by_priority: tuple[str, ...]) -> tuple[str, ...]:
-    signal = next((found for found in map(extract, texts_by_priority) if found), None)
-    return (signal,) if signal else ()
+    return next(filter(None, map(extract, texts_by_priority)), ())
 
 
 def _tail_of(live_log: LiveLog | None) -> str:
@@ -90,6 +114,6 @@ def read_failure_signals(klipper_log: LiveLog | None, moonraker_log: LiveLog | N
     return FailureSignals(
         sections=_first_signal(_failing_config_section, texts_by_priority),
         modules=_first_signal(_failing_import_module, texts_by_priority),
-        files=_first_signal(_failing_file, texts_by_priority),
+        files=_first_signal(_failing_files, texts_by_priority),
         log_tails=_format_tails(labelled_tails),
     )

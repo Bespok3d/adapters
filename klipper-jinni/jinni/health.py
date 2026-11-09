@@ -19,12 +19,7 @@ from protocol import DeviceHealth, FailureSignals, ServiceHealth
 
 from . import live_logs
 from .inspection import ServiceProbe
-from .klipper_readiness import (
-    KLIPPER_RETRIES,
-    KLIPPER_RETRY_DELAY_S,
-    KlipperReadiness,
-    klipper_healthy,
-)
+from .klipper_readiness import KLIPPER_WAIT_S, KlipperReadiness, klipper_healthy
 from .klipper_vocab import KLIPPER_SERVICE, MOONRAKER_SERVICE
 from .layout import Layout
 from .log_signals import read_failure_signals
@@ -47,13 +42,11 @@ class MoonrakerInfo:
 MOONRAKER_RETRIES = 60
 MOONRAKER_RETRY_DELAY_S = 1
 
-# Worst-case wall time health() spends retrying while a restarted service comes back (the sum of the
-# inter-attempt sleeps across both probes). The daemon's seam sizes the health verb's socket timeout
-# off this, so a legitimately slow restart (installing a plugin that bounces Moonraker) is never
-# misread as "no reply from the jinni".
-HEALTH_PROBE_BUDGET_S = (
-    KLIPPER_RETRIES * KLIPPER_RETRY_DELAY_S + MOONRAKER_RETRIES * MOONRAKER_RETRY_DELAY_S
-)
+# Worst-case wall time health() spends waiting while a restarted service comes back (Klipper's
+# wait plus the sum of Moonraker's inter-attempt sleeps). The daemon's seam sizes the health verb's
+# socket timeout off this, so a legitimately slow restart (installing a plugin that bounces
+# Moonraker) is never misread as "no reply from the jinni".
+HEALTH_PROBE_BUDGET_S = KLIPPER_WAIT_S + MOONRAKER_RETRIES * MOONRAKER_RETRY_DELAY_S
 
 _MOONRAKER_INFO_URL = "http://localhost:7125/server/info"
 
