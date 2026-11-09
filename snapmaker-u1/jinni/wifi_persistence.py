@@ -8,6 +8,7 @@ live config, which replaces the link with a plain file in the overlay. From then
 stays in the overlay and is lost on a firmware update. So when the live config is a plain file with
 a network and the persistent one exists, its network goes to /userdata and the link goes back.
 wpa_supplicant keeps running. Its next save replaces the link again, and the next round heals it.
+When the printer loses its IP, the restore gives it a network without overwriting the kept one.
 """
 import os
 import stat
@@ -55,7 +56,7 @@ def _replace_file(config: Path, content: bytes) -> None:
     _sync_directory(config.parent)
 
 
-def _replace_with_link(live_config: Path, persistent_config: Path) -> None:
+def link_live_config(live_config: Path, persistent_config: Path) -> None:
     """Points the live config at the persistent one; the live path is never missing meanwhile."""
     staging = _staging_path(live_config)
     staging.unlink(missing_ok=True)
@@ -64,17 +65,45 @@ def _replace_with_link(live_config: Path, persistent_config: Path) -> None:
     _sync_directory(live_config.parent)
 
 
-def _unlinked_network(live_config: Path, persistent_config: Path) -> bytes:
-    """The live config's network when it no longer links to the persistent one, else nothing."""
-    # No persistent config means enrollment never set the link up, so there is nothing to put back.
-    if live_config.is_symlink() or not persistent_config.is_file():
-        return b""
-    return saved_network(live_config)
+def _config_identity(config: Path) -> tuple[int, int, int, int]:
+    """Changes whenever wpa_supplicant saves, since each save renames a new file into place."""
+    config_stat = os.lstat(config)
+    return config_stat.st_ino, config_stat.st_mtime_ns, config_stat.st_ctime_ns, config_stat.st_size
 
 
 def keep_live_wifi(live_config: Path, persistent_config: Path) -> None:
-    live_network = _unlinked_network(live_config, persistent_config)
+    # No persistent config means enrollment never set the link up, so there is nothing to put back.
+    if live_config.is_symlink() or not live_config.is_file() or not persistent_config.is_file():
+        return
+    read_identity = _config_identity(live_config)
+    live_network = saved_network(live_config)
     if not live_network:
         return
     _replace_file(persistent_config, live_network)
-    _replace_with_link(live_config, persistent_config)
+    # A save that landed after the read would vanish under the link, so the link waits for the next
+    # round, which keeps that newer save first.
+    if _config_identity(live_config) != read_identity:
+        return
+    link_live_config(live_config, persistent_config)
+
+
+def _network_in_use(live_config: Path, persistent_config: Path) -> bool:
+    """The live config holds a network the restore must not overwrite."""
+    # A plain live config on a printer that keeps its Wi-Fi in /userdata is a save the link could
+    # not keep yet: the newest network there is.
+    kept_wifi = live_config.is_symlink() or persistent_config.is_file()
+    return kept_wifi and bool(saved_network(live_config))
+
+
+def restore_live_network(screen_copy: Path, live_config: Path, persistent_config: Path) -> None:
+    """Gives a printer that lost its IP a network to connect with, never over a network it has."""
+    if _network_in_use(live_config, persistent_config):
+        return
+    # Linking back to the kept network, not copying the screen's, keeps the next round from saving
+    # the screen's copy over the kept network.
+    if saved_network(persistent_config):
+        link_live_config(live_config, persistent_config)
+        return
+    screen_wifi = saved_network(screen_copy)
+    if screen_wifi:
+        live_config.write_bytes(screen_wifi)

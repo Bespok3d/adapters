@@ -10,9 +10,10 @@ surface, so it lives on its own next to the jinni class.
 import asyncio
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
-from wifi_persistence import keep_live_wifi, saved_network
+from wifi_persistence import keep_live_wifi, restore_live_network
 
 WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
 WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
@@ -27,6 +28,10 @@ COPY_FAILED = (
 )
 HEAL_FAILED = "The printer could not check or restart its Wi-Fi, and keeps trying: %s"
 HEAL_WORKS_AGAIN = "The printer can check and restart its Wi-Fi again."
+KEEP_FAILED = (
+    "The printer could not keep its Wi-Fi safe from a firmware update, and keeps trying: %s"
+)
+KEEP_WORKS_AGAIN = "The printer can keep its Wi-Fi safe from a firmware update again."
 
 logger = logging.getLogger(__name__)
 
@@ -46,24 +51,10 @@ def wlan_has_ip() -> bool:
     return "inet " in result.stdout
 
 
-def _saved_network_kept(live_config: Path) -> bool:
-    """A printer enrolled before keeps its network in /userdata, and the live config links there."""
-    return live_config.is_symlink() and bool(saved_network(live_config))
-
-
-def _copy_screen_wifi(screen_copy: Path, live_config: Path) -> None:
-    # Writing through the link would replace the kept network with the screen's copy.
-    if _saved_network_kept(live_config):
-        return
-    screen_wifi = saved_network(screen_copy)
-    if screen_wifi:
-        live_config.write_bytes(screen_wifi)
-
-
 def _restore_stock_credentials() -> None:
     # A failed copy must not stop the Wi-Fi restart, which can still connect with the config there.
     try:
-        _copy_screen_wifi(WIFI_CRED_SRC, WIFI_CRED_DST)
+        restore_live_network(WIFI_CRED_SRC, WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
     except OSError as error:
         logger.warning(COPY_FAILED, error)
 
@@ -80,14 +71,13 @@ def _restore_wifi() -> None:
     )
 
 
+def _keep_wifi() -> None:
+    keep_live_wifi(WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
+
+
 def _check_and_heal() -> None:
-    # The link goes back first, because the restore keeps a network only when the live config links
-    # to it. A failure to put it back must not stop the restore, so the restore runs regardless.
-    try:
-        keep_live_wifi(WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
-    finally:
-        if _wlan_exists() and not wlan_has_ip():
-            _restore_wifi()
+    if _wlan_exists() and not wlan_has_ip():
+        _restore_wifi()
 
 
 def _failure_detail(error: Exception) -> str:
@@ -96,32 +86,49 @@ def _failure_detail(error: Exception) -> str:
     return str(error)
 
 
-def _logged_failure(error: Exception, last_failure: str) -> str:
+def _logged_failure(error: Exception, failed_message: str, last_failure: str) -> str:
     """What failed, written to the log unless the last round failed the same way."""
     # The same failure every round would flood the daemon log. ifup's output changes from try to
     # try, so it is logged but does not count as a new failure.
     failure = str(error)
     if failure != last_failure:
-        logger.warning(HEAL_FAILED, _failure_detail(error))
+        logger.warning(failed_message, _failure_detail(error))
     return failure
 
 
-def _heal_round(last_failure: str) -> str:
-    """One check-and-heal. Returns what failed, or nothing when it went fine."""
+def _guarded_round(
+    round_step: Callable[[], None],
+    failed_message: str,
+    works_again_message: str,
+    last_failure: str,
+) -> str:
+    """One round of a watchdog step. Returns what failed, or nothing when it went fine."""
     # The watchdog runs as a task nobody awaits, so an error raised in a round would end it
     # silently and the Wi-Fi would never be healed again. The next round tries again.
     try:
-        _check_and_heal()
+        round_step()
     except Exception as error:
-        return _logged_failure(error, last_failure)
+        return _logged_failure(error, failed_message, last_failure)
     # Warning level: the jinni sets up no logging, and only warnings reach the daemon log.
     if last_failure:
-        logger.warning(HEAL_WORKS_AGAIN)
+        logger.warning(works_again_message)
     return ""
 
 
+def _keep_round(last_failure: str) -> str:
+    return _guarded_round(_keep_wifi, KEEP_FAILED, KEEP_WORKS_AGAIN, last_failure)
+
+
+def _heal_round(last_failure: str) -> str:
+    return _guarded_round(_check_and_heal, HEAL_FAILED, HEAL_WORKS_AGAIN, last_failure)
+
+
 async def wifi_watchdog() -> None:
-    last_failure = ""
+    last_keep_failure = ""
+    last_heal_failure = ""
     while True:
-        last_failure = await asyncio.to_thread(_heal_round, last_failure)
+        # Each step logs its own failure, so a failed restart never hides a failed keep. The keep
+        # goes first, so the restore finds the live config linked to the kept network.
+        last_keep_failure = await asyncio.to_thread(_keep_round, last_keep_failure)
+        last_heal_failure = await asyncio.to_thread(_heal_round, last_heal_failure)
         await asyncio.sleep(WATCHDOG_INTERVAL_S)

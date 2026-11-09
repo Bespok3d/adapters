@@ -17,7 +17,9 @@ until the printer was restarted.
 
 A Wi-Fi network changed on the printer's screen after Bespok3d was set up was lost after a firmware
 update. Saving it on the screen stopped the printer from keeping it where updates do not reach. The
-printer now notices within 30 seconds and keeps the network there again.
+printer now notices within 30 seconds and keeps the network there again. When the printer loses
+its Wi-Fi, it now goes back to that kept network and never overwrites it, and a network just saved
+on the screen is never lost. If keeping the network fails, the printer says so in its own log line.
 
 After a restart the screen could show Wi-Fi off while the printer was connected. When that happens,
 the printer now restarts the screen app once, and the screen shows Wi-Fi on.
