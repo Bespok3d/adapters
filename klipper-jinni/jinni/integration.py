@@ -5,54 +5,23 @@
 Enrollment writes the `[include bespok3d/...]` lines into the printer's own config CLIENT-side, and
 the bespok3d include dirs hold the plugin `.cfg` symlinks the base layer globs. Editing those
 configs and pruning those dirs is device-realm mutation, so the jinni owns it: the daemon never
-edits printer.cfg, it asks the jinni to unwire and to wire back up. The include patterns and config
-dirs are klipper device facts, named here, never in the generic daemon. Inherits Layout for the
-resolved paths.
+edits printer.cfg, it asks the jinni to unwire and to wire back up. The include lines (in
+include_lines) and the config dirs (here) are klipper device facts, never named in the generic
+daemon. Inherits Layout for the resolved paths.
 """
 from pathlib import Path
 
+from .include_lines import (
+    WIRED_CONFIGS,
+    WiredConfig,
+    ensure_include_line,
+    has_include_line,
+    remove_include_lines,
+)
 from .layout import Layout
 
-_KLIPPER_INCLUDE = "[include bespok3d/klipper"
-_MOONRAKER_INCLUDE = "[include bespok3d/moonraker"
-_KLIPPER_INCLUDE_LINE = "[include bespok3d/klipper/*.cfg]"
-_MOONRAKER_INCLUDE_LINE = "[include bespok3d/moonraker/*.cfg]"
-_SAVE_CONFIG_MARKER = "#*# <---------------------- SAVE_CONFIG"
 _INCLUDE_DIR_KEYS = ("BESPOK3D_KLIPPER", "BESPOK3D_MOONRAKER")
 _CONFIG_DIR_NAME = "bespok3d"
-
-
-def _remove_matching_lines(cfg_path: Path, pattern: str) -> None:
-    if not cfg_path.exists():
-        return
-    kept = [line for line in cfg_path.read_text().splitlines(keepends=True) if pattern not in line]
-    cfg_path.write_text("".join(kept))
-
-
-def _ensure_include_line(cfg_path: Path, pattern: str, include_line: str) -> None:
-    """Put our include line back, above the SAVE_CONFIG block klipper owns at the tail of the file.
-
-    Anything below that marker is klipper's to rewrite, so an include placed under it is lost the
-    next time the printer saves. Idempotent: a config that already includes us is left alone.
-
-    The blank line above the include is written, never added to what is already there. Taking the
-    line out leaves its surrounding blank line behind, so a version that just prefixed another one
-    grew the user's config by one empty line on every switch off and back on, and the include ended
-    up pushed down a screenful of blank space.
-    """
-    if not cfg_path.exists():
-        return
-    content = cfg_path.read_text()
-    if pattern in content:
-        return
-    marker_at = content.find(_SAVE_CONFIG_MARKER)
-    head = (content if marker_at < 0 else content[:marker_at]).rstrip("\n")
-    tail = "" if marker_at < 0 else f"\n{content[marker_at:]}"
-    cfg_path.write_text(f"{head}\n\n{include_line}\n{tail}")
-
-
-def _has_include_line(cfg_path: Path, pattern: str) -> bool:
-    return cfg_path.exists() and pattern in cfg_path.read_text()
 
 
 def _dead_links_in(directory: Path) -> list[Path]:
@@ -116,23 +85,31 @@ class KlipperIntegration(Layout, Integration):
                 removed.extend(_prune_dir(Path(directory)))
         return removed
 
+    def config_copies(self, path_key: str) -> list[Path]:
+        """Every file that has to carry the include line for one of the printer's own configs: the
+        live config, plus any copy the device's firmware puts back over it on boot. A device whose
+        firmware does that adds its copy here, or the line is gone after the next boot."""
+        return [Path(self.paths()[path_key])]
+
+    def _wired_config_files(self) -> list[tuple[WiredConfig, Path]]:
+        return [(wired, cfg_path) for wired in WIRED_CONFIGS
+                for cfg_path in self.config_copies(wired.path_key)]
+
     def remove_bespok3d_includes(self) -> None:
-        paths = self.paths()
-        _remove_matching_lines(Path(paths["PRINTER_CFG"]), _KLIPPER_INCLUDE)
-        _remove_matching_lines(Path(paths["MOONRAKER_CFG"]), _MOONRAKER_INCLUDE)
+        for wired, cfg_path in self._wired_config_files():
+            remove_include_lines(cfg_path, wired.pattern)
 
     def restore_bespok3d_includes(self) -> None:
-        paths = self.paths()
-        _ensure_include_line(Path(paths["PRINTER_CFG"]), _KLIPPER_INCLUDE, _KLIPPER_INCLUDE_LINE)
-        _ensure_include_line(
-            Path(paths["MOONRAKER_CFG"]), _MOONRAKER_INCLUDE, _MOONRAKER_INCLUDE_LINE,
-        )
+        for wired, cfg_path in self._wired_config_files():
+            ensure_include_line(cfg_path, wired.pattern, wired.include_line)
 
     def bespok3d_include_status(self) -> dict[str, bool]:
-        paths = self.paths()
+        """A config counts as wired only when every copy of it carries the line: a copy the
+        firmware restores from without it undoes the live line on the next boot."""
         return {
-            "printer.cfg": _has_include_line(Path(paths["PRINTER_CFG"]), _KLIPPER_INCLUDE),
-            "moonraker.conf": _has_include_line(Path(paths["MOONRAKER_CFG"]), _MOONRAKER_INCLUDE),
+            wired.device_name: all(has_include_line(cfg_path, wired.pattern)
+                                   for cfg_path in self.config_copies(wired.path_key))
+            for wired in WIRED_CONFIGS
         }
 
     def prune_bespok3d_config_dir(self) -> None:

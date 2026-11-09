@@ -32,3 +32,11 @@ tail = '' if at < 0 else '\\n' + content[at:]
 open('${cfgPath}', 'w').write(head + '\\n\\n' + '${include.line}' + '\\n' + tail)
 "`
 }
+
+// The U1 firmware keeps its own copy of each config under /home/lava/origin_printer_data, and on
+// firmware 2.0 its boot (S48setup-lava-env) puts that copy back over a live config that differs, so
+// a line written only into the live config is gone after the next boot. The copy gets the same line.
+// A firmware without the copy has nothing to restore from, and then nothing is written.
+export function bespok3dIncludeIfPresentCommand(cfgPath: string, include: Bespok3dInclude): string {
+  return `test ! -f ${cfgPath} || { ${bespok3dIncludeCommand(cfgPath, include)}; }`
+}

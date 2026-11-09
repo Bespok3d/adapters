@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs'
 
 import { describe, it, expect } from 'vitest'
 
-import { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from './klipper-includes'
+import {
+  bespok3dIncludeCommand,
+  bespok3dIncludeIfPresentCommand,
+  KLIPPER_INCLUDE,
+  MOONRAKER_INCLUDE,
+} from './klipper-includes'
 
 describe('bespok3dIncludeCommand', () => {
   it('leaves a config that already includes bespok3d alone', () => {
@@ -31,12 +36,25 @@ describe('bespok3dIncludeCommand', () => {
   })
 })
 
+describe('bespok3dIncludeIfPresentCommand', () => {
+  // The firmware's own copy of a config, which its boot puts back over the live one on firmware 2.0.
+  const command = bespok3dIncludeIfPresentCommand('/origin/printer.cfg', KLIPPER_INCLUDE)
+
+  it('writes the same include line the live config gets', () => {
+    expect(command).toContain(bespok3dIncludeCommand('/origin/printer.cfg', KLIPPER_INCLUDE))
+  })
+
+  it('does nothing on a firmware that has no copy to restore from', () => {
+    expect(command.startsWith('test ! -f /origin/printer.cfg || {')).toBe(true)
+  })
+})
+
 // Enrollment writes the include from here, over SSH, before there is a daemon to ask. Once there is
 // one, the jinni writes the same line on the device. Two copies of one edit, so if they ever drift
 // the printer gets a second include line or loads nothing, and this is what fails first.
 describe('the include lines the jinni writes on the device', () => {
   const jinniIntegration = readFileSync(
-    new URL('../../klipper-jinni/jinni/integration.py', import.meta.url), 'utf-8'
+    new URL('../../klipper-jinni/jinni/include_lines.py', import.meta.url), 'utf-8'
   )
 
   it('are the same lines the app writes at enrollment', () => {

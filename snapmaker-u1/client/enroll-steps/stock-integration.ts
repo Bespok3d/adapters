@@ -4,9 +4,14 @@ import { openSystemPackage } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { DAEMON_PACKAGE } from '../packages'
-import { BESPOK3D, PRINTER_DATA } from '../paths'
+import { BESPOK3D, PATHS, PRINTER_DATA } from '../paths'
 import { patchNginx, patchS90lmd } from '../stock-patches'
-import { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from '../klipper-includes'
+import {
+  bespok3dIncludeCommand,
+  bespok3dIncludeIfPresentCommand,
+  KLIPPER_INCLUDE,
+  MOONRAKER_INCLUDE,
+} from '../klipper-includes'
 
 // Where bespok3d meets the stock Snapmaker system: its boot sequence, its web server and its Klipper
 // and Moonraker configs. Every edit here is minimal and additive, so a printer keeps working exactly
@@ -70,4 +75,6 @@ export async function stepKlipperIncludes(ssh: SshSession, ctx: EnrollContext): 
   )
   await ssh.exec(bespok3dIncludeCommand(`${PRINTER_DATA}/config/printer.cfg`, KLIPPER_INCLUDE))
   await ssh.exec(bespok3dIncludeCommand(`${PRINTER_DATA}/config/moonraker.conf`, MOONRAKER_INCLUDE))
+  await ssh.exec(bespok3dIncludeIfPresentCommand(PATHS.PRINTER_CFG_ORIGIN, KLIPPER_INCLUDE))
+  await ssh.exec(bespok3dIncludeIfPresentCommand(PATHS.MOONRAKER_CFG_ORIGIN, MOONRAKER_INCLUDE))
 }

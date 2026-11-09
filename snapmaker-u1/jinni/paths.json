@@ -9,6 +9,8 @@
   "MOONRAKER_COMPONENTS": "/home/lava/moonraker/moonraker/components",
   "PRINTER_CFG": "/oem/printer_data/config/printer.cfg",
   "MOONRAKER_CFG": "/oem/printer_data/config/moonraker.conf",
+  "PRINTER_CFG_ORIGIN": "/home/lava/origin_printer_data/config/printer.cfg",
+  "MOONRAKER_CFG_ORIGIN": "/home/lava/origin_printer_data/config/moonraker.conf",
   "PYTHON_SITE_PACKAGES": "/usr/lib/python3.11/site-packages",
   "KLIPPER_LOG": "/oem/printer_data/logs/klippy.log",
   "MOONRAKER_LOG": "/oem/printer_data/logs/moonraker.log",
