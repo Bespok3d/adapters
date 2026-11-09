@@ -188,4 +188,8 @@ describe('adapter step order', () => {
 
     expect(stepIds.indexOf('deploy-s99')).toBeGreaterThan(stepIds.indexOf('deploy-daemon'))
   })
+
+  it('offers the app a venv refresh for a daemon it keeps', () => {
+    expect(getAdapter('snapmaker-u1')!.opSteps?.map((step) => step.id)).toContain('refresh-daemon-venv')
+  })
 })

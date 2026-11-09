@@ -22,7 +22,7 @@ vi.mock('@adapter-sdk', () => ({
   openSystemPackage: (packageName: string) => openedPackages.open(packageName),
 }))
 
-import { stepDeployDaemon } from './daemon-install'
+import { stepDeployDaemon, stepRefreshDaemonVenv } from './daemon-install'
 import { fakePackage, JINNI_PAYLOAD } from '../fake-packages'
 import type { PackageRelease } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
@@ -139,5 +139,40 @@ describe('stepDeployDaemon as an update cut off part way', () => {
     const printer = await cutThenRerun(/pip install/)
 
     expectReleaseInPlace(printer)
+  })
+})
+
+// The app keeps a daemon newer than the one it ships, so the daemon step does not run, and the venv is
+// brought up to the wheels that daemon left on the printer.
+describe('stepRefreshDaemonVenv', () => {
+  const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+
+  it('installs the wheels the kept daemon brought when the venv does not hold them', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toHaveLength(1)
+    expect(pipRuns(printer)[0]).toContain(NEWER_WHEEL)
+    expect(printer.streams).toEqual([])
+    expect(printer.uploads).toEqual([])
+  })
+
+  it('runs no pip when the venv already holds the wheels on the printer', async () => {
+    const printer = await enrolledPrinter()
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([])
+  })
+
+  it('touches nothing on a printer that holds no wheels', async () => {
+    const printer = fakePrinter()
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.commands).toHaveLength(1)
+    expect(printer.files.size).toBe(0)
   })
 })

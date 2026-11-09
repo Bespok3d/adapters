@@ -5,7 +5,7 @@ import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { openJinniSource } from '../jinni-deploy'
 import { syncPayload } from '../package-deploy'
-import { sha256Of } from '../payload-hashes'
+import { parseHashList, remoteHashCommand, sha256Of } from '../payload-hashes'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
@@ -24,7 +24,8 @@ import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
 const AUTOSTART_SCRIPT = 's10bespok3d-daemon'
 
 // The daemon's python dependencies, baked into its package at build time (ADR-0036).
-const WHEEL_DIR = 'wheels/'
+const WHEEL_DIR_NAME = 'wheels'
+const WHEEL_DIR = `${WHEEL_DIR_NAME}/`
 
 // An earlier release created this under a misspelled name; a printer carrying it gets it cleared.
 const LEGACY_DIR = `${BESPOK3D}/var/lib/demon`
@@ -74,4 +75,15 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
   await cleanSystemPython(ssh)
   await ensureVenv(ssh, ctx)
   await syncVenvDeps(ssh, ctx, wheelHashes(signedPackage, runtimePaths))
+}
+
+// When the app keeps a newer daemon than the one it ships, the daemon step does not run, yet the venv
+// can still lack that daemon's packages (a venv made afresh, a pip run cut short). The wheels that
+// daemon brought are already on the printer, so pip installs from them, and only when the venv does not
+// already hold them.
+export async function stepRefreshDaemonVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
+  const printerWheels = parseHashList(await ssh.exec(remoteHashCommand(DAEMON_BASE, [WHEEL_DIR_NAME])))
+  if (printerWheels.size === 0) return
+  await ensureVenv(ssh, ctx)
+  await syncVenvDeps(ssh, ctx, printerWheels)
 }
