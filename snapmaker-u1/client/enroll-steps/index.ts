@@ -41,7 +41,7 @@ export const ENROLL_STEPS: EnrollStep[] = [
     id: 'fix-wifi-persistence',
     label: 'Persisting WiFi credentials',
     detail:
-      'Copies the active wpa_supplicant config to /userdata/cfg/wpa_config.conf and symlinks /etc/wpa_supplicant.conf there. Ensures WiFi reconnects automatically on future reboots without waiting for lmd.',
+      'Copies the saved Wi-Fi network to /userdata/cfg/wpa_config.conf and symlinks /etc/wpa_supplicant.conf there, then checks the link is in place. Ensures WiFi reconnects automatically on future reboots without waiting for lmd. Fails with a plain message if the network cannot be found, saved or linked.',
     run: (ssh) => stepFixWifiPersistence(ssh),
   },
   {

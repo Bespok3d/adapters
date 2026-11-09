@@ -4,11 +4,17 @@ import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { OVERLAY_DEBUG_FLAG, writeLayerActive } from '../overlay'
 import { pollReconnect } from '../reconnect'
+import {
+  WIFI_CREDENTIAL_SOURCES,
+  WIFI_LIVE_CONFIG,
+  WIFI_PERSISTENT_CONFIG,
+  wifiPersistenceCommand,
+} from '../wifi-persistence'
 
-// Opening the printer's write layer. Stock U1 firmware mounts /oem and /etc read-only over an
-// overlayfs whose upper layer only exists while /oem/.debug is present, so every later step here
-// would be silently discarded on reboot without this. The WiFi copy runs BEFORE the flag because
-// wpa-conf.sh writes credentials into that same disposable upper layer.
+// Opening the printer's write layer. Stock U1 firmware runs its system on an overlayfs whose upper
+// layer the boot wipes unless /oem/.debug is present, so every later step here would be lost on
+// reboot without this. Once the flag is set that layer is kept, so the screen's saved Wi-Fi goes into
+// /etc first and the kept layer starts with a Wi-Fi config that connects.
 
 export async function stepUnlockOverlay(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   ctx.overlayWasActive = await writeLayerActive(ssh)
@@ -19,17 +25,7 @@ export async function stepUnlockOverlay(ssh: SshSession, ctx: EnrollContext): Pr
 }
 
 export async function stepFixWifiPersistence(ssh: SshSession): Promise<void> {
-  await ssh.exec(
-    `mkdir -p /userdata/cfg` +
-      ` && { { grep -q 'network=' /tmp/wpa_supplicant.conf 2>/dev/null` +
-      `         && cp -p /tmp/wpa_supplicant.conf /userdata/cfg/wpa_config.conf; }` +
-      `       || { grep -q 'network=' /etc/wpa_supplicant.conf 2>/dev/null` +
-      `             && cp -p /etc/wpa_supplicant.conf /userdata/cfg/wpa_config.conf; }` +
-      `       || true; }` +
-      ` && grep -q 'network=' /userdata/cfg/wpa_config.conf 2>/dev/null` +
-      ` && ln -sf /userdata/cfg/wpa_config.conf /etc/wpa_supplicant.conf` +
-      ` || true`
-  )
+  await ssh.exec(wifiPersistenceCommand(WIFI_LIVE_CONFIG, WIFI_PERSISTENT_CONFIG, WIFI_CREDENTIAL_SOURCES))
 }
 
 export async function stepRebootAndReconnect(ssh: SshSession, ctx: EnrollContext): Promise<void> {
