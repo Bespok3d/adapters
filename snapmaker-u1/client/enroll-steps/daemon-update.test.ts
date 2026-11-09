@@ -103,7 +103,7 @@ describe('stepDeployDaemon as an update', () => {
 
     await stepDeployDaemon(printer.ssh, updateEnroll)
 
-    expect(printer.streams.map((stream) => stream.length)).toEqual([6 + JINNI_PAYLOAD.length])
+    expect(printer.streams.map((stream) => stream.length)).toEqual([7 + JINNI_PAYLOAD.length])
   })
 })
 

@@ -35,6 +35,7 @@ const DAEMON_RUNTIME = [
   'core/state.py',
   'core/legacy.py',
   'wheels/fastapi-0.115.0-py3-none-any.whl',
+  'S99bespok3d',
 ]
 
 function stubBundledPackages(): void {
@@ -58,7 +59,9 @@ describe('stepDeployDaemon', () => {
     expect(printer.commands).toEqual([])
   })
 
-  it('places the daemon runtime from the package, and the init scripts nowhere near the runtime tree', async () => {
+  // The boot dispatcher stays beside the daemon, for the step that installs it to copy; the daemon's
+  // own autostart script goes to the autostart directory alone.
+  it('places the daemon runtime and its boot dispatcher from the package, and its autostart script outside the runtime tree', async () => {
     stubBundledPackages()
     const printer = fakePrinter()
 
@@ -69,7 +72,7 @@ describe('stepDeployDaemon', () => {
     })
     expect(printer.files.get(`${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`)?.toString())
       .toBe(packagedContent(DAEMON_PACKAGE, 's10bespok3d-daemon'))
-    expect([...printer.files.keys()].some((filePath) => filePath.includes('S99bespok3d'))).toBe(false)
+    expect([...printer.files.keys()].some((filePath) => filePath.startsWith('/etc/'))).toBe(false)
     expect(printer.files.has(`${DAEMON_BASE}/s10bespok3d-daemon`)).toBe(false)
   })
 

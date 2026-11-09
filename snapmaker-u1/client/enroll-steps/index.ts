@@ -59,13 +59,6 @@ export const ENROLL_STEPS: EnrollStep[] = [
     run: (ssh, ctx) => stepCreateWorkspace(ssh, ctx),
   },
   {
-    id: 'deploy-s99',
-    label: 'Installing the startup manager',
-    detail:
-      'Writes /etc/init.d/S99bespok3d: the bespok3d init.d dispatcher. At boot it iterates /userdata/bespok3d/etc/init.d/autostart/ and starts each plugin in order.',
-    run: (ssh) => stepDeployS99(ssh),
-  },
-  {
     id: 'patch-s90lmd',
     label: 'Wiring bespok3d into the boot sequence',
     detail:
@@ -99,6 +92,13 @@ export const ENROLL_STEPS: EnrollStep[] = [
     detail:
       'Uploads the daemon Python source and the device adapter (jinni) to /userdata/bespok3d/var/lib/daemon/, then provisions the daemon its own isolated Python virtualenv at /userdata/bespok3d/venv with its packages from pre-built wheels. The Moonraker, Klipper, and system Python are never touched.',
     run: (ssh, ctx) => stepDeployDaemon(ssh, ctx),
+  },
+  {
+    id: 'deploy-s99',
+    label: 'Installing the startup manager',
+    detail:
+      'Writes /etc/init.d/S99bespok3d: the bespok3d init.d dispatcher, copied from the daemon now in place. At boot it iterates /userdata/bespok3d/etc/init.d/autostart/ and starts each plugin in order.',
+    run: (ssh) => stepDeployS99(ssh),
   },
   {
     id: 'generate-daemon-cert',

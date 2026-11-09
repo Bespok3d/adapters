@@ -180,3 +180,12 @@ describe('adapter jinni version', () => {
     expect(getAdapter('snapmaker-u1')?.jinniVersion).toBe(VERSION_JSON.jinni_version)
   })
 })
+
+describe('adapter step order', () => {
+  // The boot dispatcher is copied from the daemon in place, so it can only be installed after it.
+  it('installs the boot dispatcher after the daemon', () => {
+    const stepIds = getAdapter('snapmaker-u1')!.enrollSteps.map((step) => step.id)
+
+    expect(stepIds.indexOf('deploy-s99')).toBeGreaterThan(stepIds.indexOf('deploy-daemon'))
+  })
+})
