@@ -61,6 +61,11 @@ export async function stepPatchNginx(ssh: SshSession): Promise<void> {
   await ssh.putContent('/etc/nginx/sites-enabled/fluidd', patched)
 }
 
+// The screen's "Advanced mode" marker. While it exists the firmware's boot (S48setup-lava-env) keeps
+// the live configs as they are instead of putting its own copies back, so our include lines and the
+// user's calibration both survive a reboot.
+const ADVANCED_MODE_MARKER = `${PRINTER_DATA}/.fluidd`
+
 export async function stepKlipperIncludes(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   await ssh.exec(
     `
@@ -70,7 +75,9 @@ export async function stepKlipperIncludes(ssh: SshSession, ctx: EnrollContext): 
     touch ${PRINTER_DATA}/config/bespok3d/klipper/main.cfg \
           ${PRINTER_DATA}/config/bespok3d/moonraker/main.cfg &&
     chown -R ${ctx.runtimeUser}:${ctx.runtimeUser} ${PRINTER_DATA}/config/bespok3d &&
-    chmod -R 755 ${PRINTER_DATA}/config/bespok3d
+    chmod -R 755 ${PRINTER_DATA}/config/bespok3d &&
+    touch ${ADVANCED_MODE_MARKER} &&
+    chown ${ctx.runtimeUser}:${ctx.runtimeUser} ${ADVANCED_MODE_MARKER}
   `.trim()
   )
   await ssh.exec(bespok3dIncludeCommand(`${PRINTER_DATA}/config/printer.cfg`, KLIPPER_INCLUDE))

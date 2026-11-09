@@ -90,7 +90,7 @@ export const ENROLL_STEPS: EnrollStep[] = [
     id: 'klipper-includes',
     label: 'Connecting Klipper and Moonraker to the plugin system',
     detail:
-      'Creates /oem/printer_data/config/bespok3d/{klipper,moonraker,data}/ with empty main.cfg placeholders. Appends [include bespok3d/klipper/*.cfg] to printer.cfg and [include bespok3d/moonraker/*.cfg] to moonraker.conf. Both are idempotent.',
+      'Creates /oem/printer_data/config/bespok3d/{klipper,moonraker,data}/ with empty main.cfg placeholders. Appends [include bespok3d/klipper/*.cfg] to printer.cfg and [include bespok3d/moonraker/*.cfg] to moonraker.conf. Creates /oem/printer_data/.fluidd (the screen\'s Advanced mode), so the firmware keeps these configs as they are at every boot. All idempotent.',
     run: (ssh, ctx) => stepKlipperIncludes(ssh, ctx),
   },
   {
