@@ -9,6 +9,10 @@ too, and switching Bespok3d off takes it out of both. A printer that already had
 banner once, and "Put it back" then fixes it for good. Printers on other firmware work as before.
 Thanks to olavgm.
 
+When the printer lost its Wi-Fi, Bespok3d put back the network saved on the screen, and that could
+replace the network Bespok3d keeps. The kept network now stays, and if the screen's network
+cannot be put back, the printer says so in its log.
+
 ## 0.1.11
 
 Nothing changes on the printer. This release is what lets the store show what each version of the

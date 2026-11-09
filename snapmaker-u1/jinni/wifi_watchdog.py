@@ -7,6 +7,7 @@ is present but has lost its IP. This is a device-realm resilience task the jinni
 background, NOT part of the jinni contract surface, so it lives on its own next to the jinni class.
 """
 import asyncio
+import logging
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,13 @@ WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
 WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
 WLAN_IFACE = "wlan0"
 WATCHDOG_INTERVAL_S = 30
+SAVED_NETWORK_MARK = b"network="
+COPY_FAILED = (
+    "The printer could not put the Wi-Fi saved on its screen in use,"
+    " so its Wi-Fi may not come back: %s"
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _wlan_exists() -> bool:
@@ -28,12 +36,35 @@ def _wlan_has_ip() -> bool:
     return "inet " in result.stdout
 
 
-def _restore_stock_credentials() -> None:
-    if not WIFI_CRED_SRC.exists():
+# Read as bytes: a network name need not be valid UTF-8, and decoding it could fail.
+def _saved_network(config: Path) -> bytes:
+    """The config as it is when it holds a saved network, else nothing."""
+    if not config.is_file():
+        return b""
+    content = config.read_bytes()
+    return content if SAVED_NETWORK_MARK in content else b""
+
+
+def _saved_network_kept(live_config: Path) -> bool:
+    """A printer enrolled before keeps its network in /userdata, and the live config links there."""
+    return live_config.is_symlink() and bool(_saved_network(live_config))
+
+
+def _copy_screen_wifi(screen_copy: Path, live_config: Path) -> None:
+    # Writing through the link would replace the kept network with the screen's copy.
+    if _saved_network_kept(live_config):
         return
-    stock = WIFI_CRED_SRC.read_text()
-    if "network=" in stock:
-        WIFI_CRED_DST.write_text(stock)
+    screen_wifi = _saved_network(screen_copy)
+    if screen_wifi:
+        live_config.write_bytes(screen_wifi)
+
+
+def _restore_stock_credentials() -> None:
+    # The watchdog runs as a task nobody awaits, so an error raised here would end it silently.
+    try:
+        _copy_screen_wifi(WIFI_CRED_SRC, WIFI_CRED_DST)
+    except OSError as error:
+        logger.warning(COPY_FAILED, error)
 
 
 def _restore_wifi() -> None:
