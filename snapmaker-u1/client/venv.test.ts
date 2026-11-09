@@ -119,6 +119,6 @@ describe('ensureVenv', () => {
 
     await ensureVenv(ssh, silentEnroll)
 
-    expect(commands).toContain(`python3 -m venv ${BESPOK3D}/venv && rm -f ${BESPOK3D}/venv/.bespok3d-wheels`)
+    expect(commands).toContain(`rm -f ${BESPOK3D}/venv/.bespok3d-wheels && python3 -m venv ${BESPOK3D}/venv`)
   })
 })

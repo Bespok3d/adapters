@@ -30,12 +30,13 @@ export async function cleanSystemPython(ssh: SshSession): Promise<void> {
   )
 }
 
-// A venv made afresh holds no packages, so the marker of an earlier pip run goes with the old one.
+// A venv made afresh holds no packages, so the marker of an earlier pip run goes first: a venv creation
+// cut short must not leave a marker that would skip pip next time.
 export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const exists = (await ssh.exec(`test -x ${VENV}/bin/python3 && echo yes || echo no`)).trim()
   if (exists !== 'yes') {
     ctx.onProgress?.('Creating Python virtual environment…')
-    await ssh.exec(`python3 -m venv ${VENV} && rm -f ${WHEEL_MARKER}`)
+    await ssh.exec(`rm -f ${WHEEL_MARKER} && python3 -m venv ${VENV}`)
   }
 }
 
