@@ -13,11 +13,7 @@ vi.mock('electron', () => ({
 
 // The SDK surface this module reaches for, and nothing else: the real loader drags electron's window
 // machinery in behind it, which a shell-quoting helper has no business needing.
-vi.mock('@adapter-sdk', () => ({
-  shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
-  devSourcePath: () => undefined,
-  unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
-}))
+vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
 
 import { ensureVenv, installVenvDeps } from './venv'
 import { BESPOK3D, DAEMON_BASE } from './paths'

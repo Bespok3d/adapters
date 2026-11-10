@@ -12,6 +12,7 @@ import type { BundledPackage, EnrollContext, SshSession } from '@adapter-sdk'
 import { parseHashList, payloadChanges, remoteHashCommand, sha256Of, topLevelEntries } from './payload-hashes'
 import type { HashesByPath } from './payload-hashes'
 import { TAR_END, tarFileEntry } from './payload-tar'
+import { shellArguments } from './shell-arguments'
 import { spanFraction } from './step-progress'
 import type { ProgressSpan } from './step-progress'
 
@@ -95,7 +96,7 @@ async function sendChangedFiles(sync: PayloadSync, changedFiles: readonly Payloa
 async function removeDropped(sync: PayloadSync, droppedPaths: readonly string[]): Promise<void> {
   if (droppedPaths.length === 0) return
 
-  await sync.ssh.exec(`rm -f ${droppedPaths.map((droppedPath) => shellQuote(`${sync.remoteBase}/${droppedPath}`)).join(' ')}`)
+  await sync.ssh.exec(`rm -f ${shellArguments(droppedPaths.map((droppedPath) => `${sync.remoteBase}/${droppedPath}`))}`)
 }
 
 // Removal comes after the copy, so an update cut off at any point leaves either the old tree or the new

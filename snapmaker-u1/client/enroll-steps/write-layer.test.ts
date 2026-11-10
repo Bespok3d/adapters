@@ -9,9 +9,8 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../../Bespok3d-desktop', import.meta.url)) },
 }))
 
-vi.mock('@adapter-sdk', () => ({
-  devSourcePath: () => undefined,
-  unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
+vi.mock('@adapter-sdk', async () => ({
+  ...(await import('../fake-sdk')),
   connect: async () => { throw new Error('this step does not reconnect') },
 }))
 

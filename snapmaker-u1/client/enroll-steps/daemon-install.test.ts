@@ -15,10 +15,8 @@ const openedPackages = vi.hoisted(() => ({
 
 // The daemon and the jinni both come through the SDK's machinery door, because the app can offer a
 // published one newer than the copy it ships with, and a daemon release can need a newer jinni.
-vi.mock('@adapter-sdk', () => ({
-  shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
-  devSourcePath: () => undefined,
-  unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
+vi.mock('@adapter-sdk', async () => ({
+  ...(await import('../fake-sdk')),
   openSystemPackage: (packageName: string) => openedPackages.open(packageName),
 }))
 

@@ -8,9 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 // The SDK's shell quoting and nothing else: the real loader drags electron in behind it.
-vi.mock('@adapter-sdk', () => ({
-  shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
-}))
+vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
 
 import { parseRecordCheck, recordCheckCommand, venvRepair } from './venv-record'
 import type { InstalledDistribution } from './venv-record'

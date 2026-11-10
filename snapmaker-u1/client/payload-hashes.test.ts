@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@adapter-sdk', () => ({
-  shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
-}))
+vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
 
 import { parseHashList, payloadChanges } from './payload-hashes'
 

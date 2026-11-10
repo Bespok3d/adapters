@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { shellQuote } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { sha256Of } from './payload-hashes'
 import type { HashesByPath } from './payload-hashes'
+import { shellArguments } from './shell-arguments'
 import { parseRecordCheck, recordCheckCommand, venvRepair } from './venv-record'
 
 import { BESPOK3D, DAEMON_BASE } from './paths'
@@ -52,10 +52,6 @@ export async function installVenvDeps(ssh: SshSession, ctx: EnrollContext, wheel
   if (wheelPaths.length === 0) return
   ctx.onProgress?.('Installing daemon packages into venv; this may take a minute…')
   await ssh.exec(`${PIP_INSTALL_FROM_FILES} ${payloadWheelFiles(wheelPaths)}`)
-}
-
-function shellArguments(remotePaths: readonly string[]): string {
-  return remotePaths.map(shellQuote).join(' ')
 }
 
 function payloadWheelFiles(wheelPaths: readonly string[]): string {

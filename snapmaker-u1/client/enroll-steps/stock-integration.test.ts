@@ -13,9 +13,7 @@ vi.mock('@adapter-sdk', async () => {
   const { fakePackage } = await import('../fake-packages')
 
   return {
-    shellQuote: (value: string) => `'${value.replace(/'/g, "'\\''")}'`,
-    devSourcePath: () => undefined,
-    unverifiedBundledPayload: () => { throw new Error('the checkout copy is what this test reads') },
+    ...(await import('../fake-sdk')),
     openSystemPackage: async (packageName: string) => fakePackage(packageName),
   }
 })

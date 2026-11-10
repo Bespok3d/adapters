@@ -6,6 +6,8 @@ import { createHash } from 'crypto'
 
 import { shellQuote } from '@adapter-sdk'
 
+import { shellArguments } from './shell-arguments'
+
 export interface PayloadChanges {
   changed: string[]
   dropped: string[]
@@ -28,10 +30,8 @@ export function topLevelEntries(payloadPaths: readonly string[]): string[] {
 // keeps its own files there. Python's caches are not package files, so they are neither compared nor
 // removed. A missing entry or base is a printer that lacks those files, so it lists nothing for them.
 export function remoteHashCommand(remoteBase: string, ownedEntries: readonly string[]): string {
-  const entries = ownedEntries.map(shellQuote).join(' ')
-
   return `cd ${shellQuote(remoteBase)} 2>/dev/null || exit 0; ` +
-    `find ${entries} -type f ! -path '*/__pycache__/*' -exec sha256sum {} + 2>/dev/null; true`
+    `find ${shellArguments(ownedEntries)} -type f ! -path '*/__pycache__/*' -exec sha256sum {} + 2>/dev/null; true`
 }
 
 // sha256sum prints "<hash>  <path>", one file a line.
