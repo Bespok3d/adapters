@@ -17,6 +17,7 @@ from pathlib import Path
 SAVED_NETWORK_MARK = b"network="
 # wpa_supplicant writes its own "<config>.tmp", so ours must never share that name.
 STAGING_SUFFIX = ".bespok3d-staging"
+NEW_CONFIG_MODE = 0o600
 
 
 # Read as bytes: a network name need not be valid UTF-8, and decoding it could fail.
@@ -41,14 +42,23 @@ def _sync_directory(directory: Path) -> None:
         os.close(directory_fd)
 
 
+def _owner_and_mode(config: Path) -> tuple[int, int, int]:
+    """The config holds the Wi-Fi password, so a new copy keeps the old one's owner and mode."""
+    try:
+        config_stat = config.stat()
+    except FileNotFoundError:
+        return os.getuid(), os.getgid(), NEW_CONFIG_MODE
+    return config_stat.st_uid, config_stat.st_gid, stat.S_IMODE(config_stat.st_mode)
+
+
 def _replace_file(config: Path, content: bytes) -> None:
     """Puts the content in place whole: a power cut leaves the old file or the new, never half."""
     staging = _staging_path(config)
-    # The config holds the Wi-Fi password, so the new copy keeps the old one's permissions.
-    config_mode = stat.S_IMODE(config.stat().st_mode)
+    owner_id, group_id, mode = _owner_and_mode(config)
     staging.unlink(missing_ok=True)
     with staging.open("xb") as staging_file:
-        os.fchmod(staging_file.fileno(), config_mode)
+        os.fchown(staging_file.fileno(), owner_id, group_id)
+        os.fchmod(staging_file.fileno(), mode)
         staging_file.write(content)
         staging_file.flush()
         os.fsync(staging_file.fileno())
@@ -79,7 +89,9 @@ def keep_live_wifi(live_config: Path, persistent_config: Path) -> None:
     live_network = saved_network(live_config)
     if not live_network:
         return
-    _replace_file(persistent_config, live_network)
+    # A link that keeps failing would otherwise rewrite /userdata every round, wearing the storage.
+    if persistent_config.read_bytes() != live_network:
+        _replace_file(persistent_config, live_network)
     # A save that landed after the read would vanish under the link, so the link waits for the next
     # round, which keeps that newer save first.
     if _config_identity(live_config) != read_identity:
@@ -105,5 +117,8 @@ def restore_live_network(screen_copy: Path, live_config: Path, persistent_config
         link_live_config(live_config, persistent_config)
         return
     screen_wifi = saved_network(screen_copy)
-    if screen_wifi:
-        live_config.write_bytes(screen_wifi)
+    if not screen_wifi:
+        return
+    # A live config that still links writes into the persistent one, so /userdata gets the network
+    # too. realpath, unlike resolve, never raises on a link loop; the write then fails as OSError.
+    _replace_file(Path(os.path.realpath(live_config)), screen_wifi)

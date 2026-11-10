@@ -22,11 +22,7 @@ WLAN_IFACE = "wlan0"
 WATCHDOG_INTERVAL_S = 30
 IP_TIMEOUT_S = 10
 IFUPDOWN_TIMEOUT_S = 60
-COPY_FAILED = (
-    "The printer could not put the Wi-Fi saved on its screen in use,"
-    " so its Wi-Fi may not come back: %s"
-)
-HEAL_FAILED = "The printer could not check or restart its Wi-Fi, and keeps trying: %s"
+HEAL_FAILED = "The printer could not check, restore or restart its Wi-Fi, and keeps trying: %s"
 HEAL_WORKS_AGAIN = "The printer can check and restart its Wi-Fi again."
 KEEP_FAILED = (
     "The printer could not keep its Wi-Fi safe from a firmware update, and keeps trying: %s"
@@ -52,15 +48,10 @@ def wlan_has_ip() -> bool:
 
 
 def _restore_stock_credentials() -> None:
-    # A failed copy must not stop the Wi-Fi restart, which can still connect with the config there.
-    try:
-        restore_live_network(WIFI_CRED_SRC, WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
-    except OSError as error:
-        logger.warning(COPY_FAILED, error)
+    restore_live_network(WIFI_CRED_SRC, WIFI_CRED_DST, WIFI_PERSISTENT_CONFIG)
 
 
-def _restore_wifi() -> None:
-    _restore_stock_credentials()
+def _restart_wlan() -> None:
     # ifdown exits non-zero when wlan0 is already down; ifup says if the restart worked.
     subprocess.run(
         ["ifdown", WLAN_IFACE], capture_output=True, timeout=IFUPDOWN_TIMEOUT_S, check=False,
@@ -69,6 +60,15 @@ def _restore_wifi() -> None:
         ["ifup", WLAN_IFACE], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, timeout=IFUPDOWN_TIMEOUT_S, check=True,
     )
+
+
+def _restore_wifi() -> None:
+    # A failed restore must not stop the restart, which can still connect with the config there.
+    # Its error then reaches the round, which logs it once, not every 30 seconds.
+    try:
+        _restore_stock_credentials()
+    finally:
+        _restart_wlan()
 
 
 def _keep_wifi() -> None:
