@@ -30,8 +30,14 @@ export interface FakePrinter {
   connectionLost: boolean
   // The next command matching this fails on the printer, while the connection stays up.
   failingCommand: RegExp | null
-  // The packages pip put in the venv, by dist-info dir, with what a check against their RECORD finds.
-  venvPackages: Map<string, DistributionState>
+  // The packages pip put in the venv, by dist-info dir: what a check against their RECORD finds, and which
+  // wheel they came from, here the sha256 of that wheel file.
+  venvPackages: Map<string, VenvPackage>
+}
+
+export interface VenvPackage {
+  state: DistributionState
+  recordFingerprint: string
 }
 
 function quotedPaths(command: string): string[] {
@@ -60,6 +66,10 @@ function tarEntries(archive: Buffer, offset: number): [string, Buffer][] {
   return [[prefix ? `${prefix}/${name}` : name, fileBytes], ...tarEntries(archive, nextOffset)]
 }
 
+function sha256Hex(fileBytes: Buffer): string {
+  return createHash('sha256').update(fileBytes).digest('hex')
+}
+
 function hashListOf(files: Map<string, Buffer>, command: string): string {
   const [remoteBase, ...ownedEntries] = quotedPaths(command.replace(/ ! -path .*$/, ''))
   const ownedPrefixes = ownedEntries.map((entry) => `${remoteBase}/${entry}`)
@@ -67,7 +77,7 @@ function hashListOf(files: Map<string, Buffer>, command: string): string {
 
   return ownedFiles
     .filter(([filePath]) => !filePath.includes('/__pycache__/'))
-    .map(([filePath, fileBytes]) => `${createHash('sha256').update(fileBytes).digest('hex')}  ${filePath.slice(remoteBase.length + 1)}\n`)
+    .map(([filePath, fileBytes]) => `${sha256Hex(fileBytes)}  ${filePath.slice(remoteBase.length + 1)}\n`)
     .join('')
 }
 
@@ -90,16 +100,47 @@ function fileCheckOrCopy(files: Map<string, Buffer>, command: string): string {
   return ''
 }
 
-// pip installs each wheel file named as `<name>-<version>.dist-info` in the venv's site-packages, whole.
-function pipInstall(venvPackages: Map<string, DistributionState>, command: string): void {
-  const venvDir = command.split('/bin/pip ')[0]
-  quotedPaths(command)
-    .map((wheelPath) => posix.basename(wheelPath).split('-').slice(0, 2).join('-'))
-    .forEach((nameVersion) => venvPackages.set(`${venvDir}/${VENV_SITE_PACKAGES}/${nameVersion}.dist-info`, 'intact'))
+function projectDistInfos(venvPackages: Map<string, VenvPackage>, projectName: string): string[] {
+  return [...venvPackages.keys()].filter((distInfoPath) => posix.basename(distInfoPath).startsWith(`${projectName}-`))
 }
 
-function recordCheckOf(venvPackages: Map<string, DistributionState>): string {
-  return [...venvPackages].map(([distInfoPath, state]) => `${state}\t${distInfoPath}\n`).join('')
+// pip as it really behaves: a plain install skips a version already there, whole or not, and replacing
+// a version starts by uninstalling it, which fails on a package whose RECORD is gone.
+function pipInstallWheel(printer: FakePrinter, venvDir: string, forced: boolean, wheelPath: string): void {
+  const wheelBytes = printer.files.get(wheelPath)
+  if (!wheelBytes) throw new Error(`pip: no such wheel ${wheelPath}`)
+  const [projectName, version] = posix.basename(wheelPath).split('-')
+  const distInfoPath = `${venvDir}/${VENV_SITE_PACKAGES}/${projectName}-${version}.dist-info`
+  if (!forced && printer.venvPackages.has(distInfoPath)) return
+  const replaced = projectDistInfos(printer.venvPackages, projectName)
+  if (replaced.some((replacedPath) => printer.venvPackages.get(replacedPath)?.state === 'unrecorded')) throw new Error('pip: cannot uninstall, no RECORD file')
+  replaced.forEach((replacedPath) => printer.venvPackages.delete(replacedPath))
+  printer.venvPackages.set(distInfoPath, { state: 'intact', recordFingerprint: sha256Hex(wheelBytes) })
+}
+
+function pipInstall(printer: FakePrinter, command: string): void {
+  const venvDir = command.split('/bin/pip ')[0]
+  const forced = command.includes(' --force-reinstall ')
+  quotedPaths(command).forEach((wheelPath) => pipInstallWheel(printer, venvDir, forced, wheelPath))
+}
+
+function installedLine([distInfoPath, venvPackage]: [string, VenvPackage]): string {
+  const fingerprint = venvPackage.state === 'unrecorded' ? '-' : venvPackage.recordFingerprint
+
+  return `installed\t${venvPackage.state}\t${fingerprint}\t${distInfoPath}\n`
+}
+
+function wheelLine(files: Map<string, Buffer>, wheelPath: string): string {
+  const wheelBytes = files.get(wheelPath)
+
+  return `wheel\t${wheelBytes ? sha256Hex(wheelBytes) : '-'}\t${wheelPath}\n`
+}
+
+// The check is quoted as the venv's python, the script, then the wheel paths.
+function recordCheckOf(printer: FakePrinter, command: string): string {
+  const wheelPaths = quotedPaths(command).slice(2)
+
+  return [...[...printer.venvPackages].map(installedLine), ...wheelPaths.map((wheelPath) => wheelLine(printer.files, wheelPath))].join('')
 }
 
 function removePaths(printer: FakePrinter, command: string): void {
@@ -115,8 +156,8 @@ function answer(printer: FakePrinter, command: string): string {
   if (/^(test -f|cp) /.test(command)) return fileCheckOrCopy(files, command)
   if (command.startsWith('test -x')) return 'yes'
   if (command.startsWith('cat ')) return files.get(command.split(' ')[1])?.toString('utf-8') ?? ''
-  if (command.includes(' -I -c ')) return recordCheckOf(printer.venvPackages)
-  if (command.includes('/bin/pip install ')) pipInstall(printer.venvPackages, command)
+  if (command.includes(' -I -c ')) return recordCheckOf(printer, command)
+  if (command.includes('/bin/pip install ')) pipInstall(printer, command)
   if (command.startsWith('rm -')) removePaths(printer, command)
   const marker = /^printf %s (\S+) > (\S+)$/.exec(command)
   if (marker) files.set(marker[2], Buffer.from(marker[1]))

@@ -1,79 +1,97 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Whether the packages in the daemon's venv still hold the files pip wrote, judged on the printer
-// against each package's RECORD, and which payload wheels that leaves to install again.
+// against each package's RECORD, whether each was installed from the payload wheel of its name, and
+// which payload wheels that leaves to install again.
 import { posix } from 'path'
 
 import { shellQuote } from '@adapter-sdk'
+
+import { RECORD_CHECK_SCRIPT } from './record-check-script'
+import { shellArguments } from './shell-arguments'
 
 const DISTRIBUTION_STATES = ['intact', 'damaged', 'unrecorded'] as const
 export type DistributionState = typeof DISTRIBUTION_STATES[number]
 
 export interface InstalledDistribution {
   state: DistributionState
+  // Which wheel the package was installed from; null when its RECORD is gone or unreadable.
+  recordFingerprint: string | null
   distInfoPath: string
 }
 
+export interface RecordCheck {
+  installed: InstalledDistribution[]
+  // The fingerprint of each wheel's own RECORD, by the wheel's path; null when the wheel cannot be read.
+  wheelFingerprints: ReadonlyMap<string, string | null>
+}
+
+const CHECK_LINE_KINDS = ['installed', 'wheel'] as const
+type CheckLineKind = typeof CHECK_LINE_KINDS[number]
+
+const NO_FINGERPRINT = '-'
+const RECORD_FINGERPRINT = /^([0-9a-f]{64}|-)$/
+
 export interface VenvRepair {
-  // The payload wheels whose package is missing or broken, to install again.
+  // The payload wheels whose package is missing, broken, or installed from other bytes, to install again.
   wheelPaths: string[]
   // The dist-info dirs whose RECORD is gone or unreadable: pip refuses to uninstall them, so they go first.
   unrecordedDistInfos: string[]
 }
 
-// Rows under __pycache__ are skipped: pip compiles every installed .py there, overwriting any cached .pyc
-// the wheel shipped, so a shipped row's hash is stale on a whole package and pip's own rows carry none.
-// A RECORD left with no digest at all judges nothing, so it counts as unreadable.
-const RECORD_CHECK_SCRIPT = `
-import base64, csv, glob, hashlib, os, sysconfig
-
-def file_holds(site_dir, record_row):
-    if "__pycache__" in record_row[0].split("/"):
-        return True
-    try:
-        algorithm, recorded_digest = record_row[1].split("=", 1)
-        with open(os.path.join(site_dir, record_row[0]), "rb") as installed_file:
-            installed_digest = hashlib.new(algorithm, installed_file.read()).digest()
-    except (OSError, ValueError, TypeError):
-        return False
-    return base64.urlsafe_b64encode(installed_digest).rstrip(b"=").decode() == recorded_digest.rstrip("=")
-
-def dist_state(site_dir, dist_info):
-    try:
-        with open(os.path.join(dist_info, "RECORD"), newline="", encoding="utf-8") as record_file:
-            digested_rows = [record_row for record_row in csv.reader(record_file) if len(record_row) > 1 and record_row[1]]
-    except (OSError, UnicodeDecodeError, csv.Error):
-        return "unrecorded"
-    if not digested_rows:
-        return "unrecorded"
-    return "intact" if all(file_holds(site_dir, record_row) for record_row in digested_rows) else "damaged"
-
-site_dirs = sorted({os.path.realpath(sysconfig.get_path(scheme_key)) for scheme_key in ("purelib", "platlib")})
-for site_dir in site_dirs:
-    for dist_info in sorted(glob.glob(os.path.join(site_dir, "*.dist-info"))):
-        print(dist_state(site_dir, dist_info), dist_info, sep="\\t")
-`
-
-// The venv's own python walks the venv's own site-packages; -I keeps the environment and the working
-// directory out of what it imports.
-export function recordCheckCommand(venvDir: string): string {
-  return `${shellQuote(`${venvDir}/bin/python3`)} -I -c ${shellQuote(RECORD_CHECK_SCRIPT)}`
+// The venv's own python walks the venv's own site-packages and reads the RECORD inside each wheel named;
+// -I keeps the environment and the working directory out of what it imports.
+export function recordCheckCommand(venvDir: string, remoteWheelPaths: readonly string[]): string {
+  return `${shellQuote(`${venvDir}/bin/python3`)} -I -c ${shellQuote(RECORD_CHECK_SCRIPT)} ${shellArguments(remoteWheelPaths)}`
 }
 
 function isDistributionState(state: string): state is DistributionState {
   return (DISTRIBUTION_STATES as readonly string[]).includes(state)
 }
 
-function installedDistributionOf(checkLine: string): InstalledDistribution {
-  const [state, ...distInfoPathParts] = checkLine.split('\t')
-  const distInfoPath = distInfoPathParts.join('\t')
-  if (!isDistributionState(state) || distInfoPath === '') throw new Error(`Unreadable venv package check line: ${checkLine}`)
-
-  return { state, distInfoPath }
+function unreadableLine(checkLine: string): Error {
+  return new Error(`Unreadable venv package check line: ${checkLine}`)
 }
 
-export function parseRecordCheck(checkOutput: string): InstalledDistribution[] {
-  return checkOutput.split('\n').filter((checkLine) => checkLine.trim() !== '').map(installedDistributionOf)
+function fingerprintOf(fingerprintField: string, checkLine: string): string | null {
+  if (!RECORD_FINGERPRINT.test(fingerprintField)) throw unreadableLine(checkLine)
+
+  return fingerprintField === NO_FINGERPRINT ? null : fingerprintField
+}
+
+function installedDistributionOf(checkLine: string): InstalledDistribution {
+  const [, state, fingerprintField, ...distInfoPathParts] = checkLine.split('\t')
+  const distInfoPath = distInfoPathParts.join('\t')
+  if (!isDistributionState(state) || distInfoPath === '') throw unreadableLine(checkLine)
+
+  return { state, recordFingerprint: fingerprintOf(fingerprintField, checkLine), distInfoPath }
+}
+
+function wheelFingerprintOf(checkLine: string): [string, string | null] {
+  const [, fingerprintField, ...wheelPathParts] = checkLine.split('\t')
+  const wheelPath = wheelPathParts.join('\t')
+  if (wheelPath === '') throw unreadableLine(checkLine)
+
+  return [wheelPath, fingerprintOf(fingerprintField, checkLine)]
+}
+
+function lineKindOf(checkLine: string): string {
+  return checkLine.split('\t')[0]
+}
+
+function checkLinesOfKind(checkLines: readonly string[], lineKind: CheckLineKind): string[] {
+  return checkLines.filter((checkLine) => lineKindOf(checkLine) === lineKind)
+}
+
+export function parseRecordCheck(checkOutput: string): RecordCheck {
+  const checkLines = checkOutput.split('\n').filter((checkLine) => checkLine.trim() !== '')
+  const unknownLine = checkLines.find((checkLine) => !(CHECK_LINE_KINDS as readonly string[]).includes(lineKindOf(checkLine)))
+  if (unknownLine !== undefined) throw unreadableLine(unknownLine)
+
+  return {
+    installed: checkLinesOfKind(checkLines, 'installed').map(installedDistributionOf),
+    wheelFingerprints: new Map(checkLinesOfKind(checkLines, 'wheel').map(wheelFingerprintOf)),
+  }
 }
 
 // PEP 503 names match case-insensitively, any run of "-", "_" or "." being one separator. A wheel file and
@@ -92,11 +110,15 @@ function distInfoStem(distribution: InstalledDistribution): string {
   return posix.basename(distribution.distInfoPath, '.dist-info')
 }
 
-function wheelIsWhole(wheelPath: string, installed: readonly InstalledDistribution[]): boolean {
+// A package counts as installed from this wheel only when its RECORD matches the wheel's own: a wheel
+// rebuilt at the same version carries other files under the same name.
+function wheelIsWhole(wheelPath: string, check: RecordCheck): boolean {
+  const wheelFingerprint = check.wheelFingerprints.get(wheelPath) ?? null
   const wheelKey = distributionKey(posix.basename(wheelPath))
-  const wheelDistributions = installed.filter((distribution) => distributionKey(distInfoStem(distribution)) === wheelKey)
+  const wheelDistributions = check.installed.filter((distribution) => distributionKey(distInfoStem(distribution)) === wheelKey)
 
-  return wheelDistributions.length > 0 && wheelDistributions.every((distribution) => distribution.state === 'intact')
+  return wheelFingerprint !== null && wheelDistributions.length > 0 &&
+    wheelDistributions.every((distribution) => distribution.state === 'intact' && distribution.recordFingerprint === wheelFingerprint)
 }
 
 // pip uninstalls whichever version of a project is installed before it installs the wheel, so a dist-info
@@ -109,8 +131,8 @@ function unrecordedOfProjects(brokenWheels: readonly string[], installed: readon
     .map((distribution) => distribution.distInfoPath)
 }
 
-export function venvRepair(wheelPaths: readonly string[], installed: readonly InstalledDistribution[]): VenvRepair {
-  const brokenWheels = wheelPaths.filter((wheelPath) => !wheelIsWhole(wheelPath, installed))
+export function venvRepair(wheelPaths: readonly string[], check: RecordCheck): VenvRepair {
+  const brokenWheels = wheelPaths.filter((wheelPath) => !wheelIsWhole(wheelPath, check))
 
-  return { wheelPaths: brokenWheels, unrecordedDistInfos: unrecordedOfProjects(brokenWheels, installed) }
+  return { wheelPaths: brokenWheels, unrecordedDistInfos: unrecordedOfProjects(brokenWheels, check.installed) }
 }

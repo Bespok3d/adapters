@@ -147,7 +147,7 @@ describe('stepDeployDaemon over an already enrolled printer', () => {
 
     const installCommand = printer.commands.find((command) => command.includes('pip install'))
     expect(installCommand).toBe(
-      `${BESPOK3D}/venv/bin/pip install --no-index --no-deps '${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl'`,
+      `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl'`,
     )
   })
 })

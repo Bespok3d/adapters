@@ -5,7 +5,7 @@ import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { openJinniSource } from '../jinni-deploy'
 import { syncPayload } from '../package-deploy'
-import { parseHashList, remoteHashCommand, sha256Of } from '../payload-hashes'
+import { parseHashList, remoteHashCommand } from '../payload-hashes'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
@@ -48,15 +48,9 @@ async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signed
   await ssh.exec(`chmod 755 ${autostartPath}`)
 }
 
-function wheelHashes(signedPackage: BundledPackage, runtimePaths: readonly string[]): Map<string, string> {
-  const wheelPaths = runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR))
-
-  return new Map(wheelPaths.map((wheelPath) => [wheelPath, sha256Of(signedPackage.payloadBytes(wheelPath))]))
-}
-
 // The daemon and the jinni share the daemon's directory, so they travel in one stream. With
-// sendChangedFilesOnly it sends only the files whose checksum differs from the printer's, and pip runs
-// only when a wheel changed.
+// sendChangedFilesOnly it sends only the files whose checksum differs from the printer's. pip runs only
+// for the packages the venv does not hold whole, from these exact wheels.
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)
@@ -74,16 +68,16 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
   await deployAutostartScript(ssh, ctx, signedPackage)
   await cleanSystemPython(ssh)
   await ensureVenv(ssh, ctx)
-  await syncVenvDeps(ssh, ctx, wheelHashes(signedPackage, runtimePaths))
+  await syncVenvDeps(ssh, ctx, runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR)))
 }
 
 // When the app keeps a newer daemon than the one it ships, the daemon step does not run, yet the venv
-// can still lack that daemon's packages (a venv made afresh, a pip run cut short). The wheels that
-// daemon brought are already on the printer, so pip installs from them, and only when the venv does not
-// already hold them.
+// can still lack that daemon's packages (a venv made afresh, a pip run cut short, a file lost since). The
+// wheels that daemon brought are already on the printer, so pip installs from them, and only the packages
+// the venv does not hold whole.
 export async function stepRefreshDaemonVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const printerWheels = parseHashList(await ssh.exec(remoteHashCommand(DAEMON_BASE, [WHEEL_DIR_NAME])))
   if (printerWheels.size === 0) return
   await ensureVenv(ssh, ctx)
-  await syncVenvDeps(ssh, ctx, printerWheels)
+  await syncVenvDeps(ssh, ctx, [...printerWheels.keys()])
 }

@@ -146,7 +146,7 @@ export const OP_STEPS: EnrollStep[] = [
     id: 'refresh-daemon-venv',
     label: 'Checking the daemon packages',
     detail:
-      'Installs the packages of the daemon already on the printer into /userdata/bespok3d/venv, from the wheels it brought, when the venv does not hold them yet. The daemon files are left untouched.',
+      'Checks the packages of the daemon already on the printer in /userdata/bespok3d/venv against the wheels it brought, and installs again, from those wheels, only the ones missing, damaged or rebuilt. The daemon files are left untouched.',
     run: (ssh, ctx) => stepRefreshDaemonVenv(ssh, ctx),
   },
 ]

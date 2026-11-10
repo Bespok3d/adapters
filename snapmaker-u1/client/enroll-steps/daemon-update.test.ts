@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, it, expect, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 import type { BundledPackage, EnrollContext } from '@adapter-sdk'
@@ -28,6 +29,7 @@ import type { FakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { sha256Of } from '../payload-hashes'
+import type { DistributionState } from '../venv-record'
 
 // The daemon's autostart script travels on its own, to the autostart directory; the rest goes in the stream.
 const STREAMED_DAEMON_PAYLOAD = DAEMON_PAYLOAD.filter((payloadPath) => payloadPath !== 's10bespok3d-daemon')
@@ -50,8 +52,19 @@ async function enrolledPrinter(printerFiles: Record<string, string> = {}): Promi
   return printer
 }
 
+const FASTAPI_WHEEL = `${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl`
+const FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.115.0.dist-info`
+
 function pipRuns(printer: FakePrinter): string[] {
   return printer.commands.filter((command) => command.includes('pip install'))
+}
+
+function wheelFingerprint(wheelContent: string): string {
+  return createHash('sha256').update(wheelContent).digest('hex')
+}
+
+function markPackage(printer: FakePrinter, distInfoPath: string, state: DistributionState): void {
+  printer.venvPackages.set(distInfoPath, { state, recordFingerprint: printer.venvPackages.get(distInfoPath)?.recordFingerprint ?? '' })
 }
 
 describe('stepDeployDaemon as an update', () => {
@@ -78,7 +91,8 @@ describe('stepDeployDaemon as an update', () => {
     expect(pipRuns(printer)).toEqual([])
   })
 
-  it('runs pip when a wheel changed', async () => {
+  // The wheel keeps its name and version, so pip would skip it as already installed unless forced.
+  it('installs a wheel rebuilt at the same version over the package from the old one', async () => {
     const printer = await enrolledPrinter()
     releaseDaemon({ edited: { 'wheels/fastapi-0.115.0-py3-none-any.whl': 'a newer wheel' } })
 
@@ -86,6 +100,7 @@ describe('stepDeployDaemon as an update', () => {
 
     expect(printer.streams).toEqual([['wheels/fastapi-0.115.0-py3-none-any.whl']])
     expect(pipRuns(printer)).toHaveLength(1)
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)).toEqual({ state: 'intact', recordFingerprint: wheelFingerprint('a newer wheel') })
   })
 
   // Whether the files go one by one or all together, pip decides on the wheels the venv already holds.
@@ -160,7 +175,7 @@ describe('stepRefreshDaemonVenv', () => {
     expect(printer.uploads).toEqual([])
   })
 
-  it('remembers the wheels it installed, so the next refresh runs no pip', async () => {
+  it('runs no pip on the next refresh, the venv now holding those wheels whole', async () => {
     const printer = await enrolledPrinter()
     printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
 
@@ -188,31 +203,31 @@ describe('stepRefreshDaemonVenv', () => {
   })
 })
 
-// The marker says which wheels pip installed, the files say whether they are still whole: a package that
-// lost or changed a file is installed again, and only that one.
+const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+const ADDED_WHEEL = `${DAEMON_BASE}/wheels/starlette-0.38.0-py3-none-any.whl`
+const OLDER_FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.114.0.dist-info`
+const FASTAPI_REINSTALL = `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${FASTAPI_WHEEL}'`
+
+async function refreshedPrinter(): Promise<FakePrinter> {
+  const printer = await enrolledPrinter()
+  printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+  await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+  printer.commands.length = 0
+
+  return printer
+}
+
+// Every run judges the venv by its files against the wheels on the printer: a package that lost or
+// changed a file, or came from other bytes, is installed again, and only that one.
 describe('stepRefreshDaemonVenv on a venv whose files changed', () => {
-  const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
-  const FASTAPI_WHEEL = `${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl`
-  const FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.115.0.dist-info`
-  const FASTAPI_REINSTALL = `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${FASTAPI_WHEEL}'`
-
-  async function refreshedPrinter(): Promise<FakePrinter> {
-    const printer = await enrolledPrinter()
-    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
-    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
-    printer.commands.length = 0
-
-    return printer
-  }
-
   it('installs again only the package whose files no longer match its RECORD', async () => {
     const printer = await refreshedPrinter()
-    printer.venvPackages.set(FASTAPI_DIST_INFO, 'damaged')
+    markPackage(printer, FASTAPI_DIST_INFO, 'damaged')
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
     expect(pipRuns(printer)).toEqual([FASTAPI_REINSTALL])
-    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)).toBe('intact')
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)?.state).toBe('intact')
   })
 
   it('installs again a package gone from the venv', async () => {
@@ -227,13 +242,50 @@ describe('stepRefreshDaemonVenv on a venv whose files changed', () => {
   // pip will not uninstall a package with no RECORD, so its dist-info dir is cleared before pip runs.
   it('clears a package whose RECORD is gone, then installs it again', async () => {
     const printer = await refreshedPrinter()
-    printer.venvPackages.set(FASTAPI_DIST_INFO, 'unrecorded')
+    markPackage(printer, FASTAPI_DIST_INFO, 'unrecorded')
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
     const clearAt = printer.commands.indexOf(`rm -rf '${FASTAPI_DIST_INFO}'`)
     expect(clearAt).toBeGreaterThanOrEqual(0)
     expect(printer.commands.indexOf(FASTAPI_REINSTALL)).toBeGreaterThan(clearAt)
-    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)).toBe('intact')
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)?.state).toBe('intact')
+  })
+})
+
+describe('stepRefreshDaemonVenv on wheels that changed', () => {
+  it('installs again only the wheel rebuilt at the version the venv holds', async () => {
+    const printer = await refreshedPrinter()
+    printer.files.set(FASTAPI_WHEEL, Buffer.from('a rebuilt wheel'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([FASTAPI_REINSTALL])
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)?.recordFingerprint).toBe(wheelFingerprint('a rebuilt wheel'))
+  })
+
+  // A new wheel brings pip in anyway, and the same run puts right what else is broken.
+  it('fixes a damaged package in the run that installs a new wheel', async () => {
+    const printer = await refreshedPrinter()
+    printer.files.set(ADDED_WHEEL, Buffer.from('a wheel added since'))
+    markPackage(printer, FASTAPI_DIST_INFO, 'damaged')
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toHaveLength(1)
+    expect([...printer.venvPackages.values()].map((venvPackage) => venvPackage.state)).toEqual(['intact', 'intact', 'intact'])
+  })
+
+  // pip uninstalls the version it replaces, and refuses to when that one has no RECORD.
+  it('clears another version without a RECORD in the run that installs a new wheel', async () => {
+    const printer = await refreshedPrinter()
+    printer.files.set(ADDED_WHEEL, Buffer.from('a wheel added since'))
+    printer.venvPackages.delete(FASTAPI_DIST_INFO)
+    printer.venvPackages.set(OLDER_FASTAPI_DIST_INFO, { state: 'unrecorded', recordFingerprint: '' })
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.venvPackages.has(OLDER_FASTAPI_DIST_INFO)).toBe(false)
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)?.state).toBe('intact')
   })
 })
