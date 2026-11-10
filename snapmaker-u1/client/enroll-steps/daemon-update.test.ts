@@ -22,14 +22,17 @@ vi.mock('@adapter-sdk', () => ({
   openSystemPackage: (packageName: string) => openedPackages.open(packageName),
 }))
 
-import { stepDeployDaemon } from './daemon-install'
-import { fakePackage, JINNI_PAYLOAD } from '../fake-packages'
+import { stepDeployDaemon, stepRefreshDaemonVenv } from './daemon-install'
+import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD } from '../fake-packages'
 import type { PackageRelease } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import type { FakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE } from '../packages'
 import { DAEMON_BASE } from '../paths'
 import { sha256Of } from '../payload-hashes'
+
+// The daemon's autostart script travels on its own, to the autostart directory; the rest goes in the stream.
+const STREAMED_DAEMON_PAYLOAD = DAEMON_PAYLOAD.filter((payloadPath) => payloadPath !== 's10bespok3d-daemon')
 
 // An update compares the printer's files with the signed package and sends only what differs.
 const updateEnroll = { sendChangedFilesOnly: true } as EnrollContext
@@ -87,6 +90,15 @@ describe('stepDeployDaemon as an update', () => {
     expect(pipRuns(printer)).toHaveLength(1)
   })
 
+  // Whether the files go one by one or all together, pip decides on the wheels the venv already holds.
+  it('skips pip on a full send when the venv already holds these wheels', async () => {
+    const printer = await enrolledPrinter()
+
+    await stepDeployDaemon(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([])
+  })
+
   it('falls back to sending every file when the printer cannot list its hashes', async () => {
     const printer = await enrolledPrinter()
     releaseDaemon({ edited: { 'core/state.py': 'state, edited' } })
@@ -94,7 +106,7 @@ describe('stepDeployDaemon as an update', () => {
 
     await stepDeployDaemon(printer.ssh, updateEnroll)
 
-    expect(printer.streams.map((stream) => stream.length)).toEqual([6 + JINNI_PAYLOAD.length])
+    expect(printer.streams.map((stream) => stream.length)).toEqual([STREAMED_DAEMON_PAYLOAD.length + JINNI_PAYLOAD.length])
   })
 })
 
@@ -130,5 +142,50 @@ describe('stepDeployDaemon as an update cut off part way', () => {
     const printer = await cutThenRerun(/pip install/)
 
     expectReleaseInPlace(printer)
+  })
+})
+
+// The app keeps a daemon newer than the one it ships, so the daemon step does not run, and the venv is
+// brought up to the wheels that daemon left on the printer.
+describe('stepRefreshDaemonVenv', () => {
+  const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+
+  it('installs the wheels the kept daemon brought when the venv does not hold them', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toHaveLength(1)
+    expect(pipRuns(printer)[0]).toContain(NEWER_WHEEL)
+    expect(printer.streams).toEqual([])
+    expect(printer.uploads).toEqual([])
+  })
+
+  it('remembers the wheels it installed, so the next refresh runs no pip', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toHaveLength(1)
+  })
+
+  it('runs no pip when the venv already holds the wheels on the printer', async () => {
+    const printer = await enrolledPrinter()
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([])
+  })
+
+  it('touches nothing on a printer that holds no wheels', async () => {
+    const printer = fakePrinter()
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.commands).toHaveLength(1)
+    expect(printer.files.size).toBe(0)
   })
 })

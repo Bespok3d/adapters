@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // A printer for tests: a file tree held in memory that answers the few shell commands the daemon
-// deployment sends, and reads the tar stream the way the printer's own tar does. A test sees what
-// landed, not which commands were typed, so the same assertions hold for any way of getting it there.
+// deployment and the boot dispatcher step send, and reads the tar stream the way the printer's own tar
+// does. A test sees what landed, not which commands were typed, so the same assertions hold for any
+// way of getting it there.
 import { createHash } from 'crypto'
 import type { Readable } from 'stream'
 
@@ -72,8 +73,20 @@ function removedPathsOf(command: string): string[] {
   return command.split(' ').slice(2)
 }
 
+// `test -f <path> && echo yes || echo no`, and `cp <from> <to>` for a single file.
+function fileCheckOrCopy(files: Map<string, Buffer>, command: string): string {
+  const fileCheck = /^test -f (\S+) /.exec(command)
+  if (fileCheck) return files.has(fileCheck[1]) ? 'yes' : 'no'
+  const copy = /^cp (\S+) (\S+)$/.exec(command)
+  const copiedBytes = copy ? files.get(copy[1]) : undefined
+  if (copy && copiedBytes) files.set(copy[2], Buffer.from(copiedBytes))
+
+  return ''
+}
+
 function answer(files: Map<string, Buffer>, command: string): string {
   if (command.includes('sha256sum')) return hashListOf(files, command)
+  if (/^(test -f|cp) /.test(command)) return fileCheckOrCopy(files, command)
   if (command.startsWith('test -x')) return 'yes'
   if (command.startsWith('cat ')) return files.get(command.split(' ')[1])?.toString('utf-8') ?? ''
   if (command.startsWith('rm -')) removedPathsOf(command).forEach((removedPath) => removeTree(files, removedPath))

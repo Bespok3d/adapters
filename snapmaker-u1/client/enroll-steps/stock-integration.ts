@@ -4,7 +4,7 @@ import { openSystemPackage } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { DAEMON_PACKAGE } from '../packages'
-import { BESPOK3D, PATHS, PRINTER_DATA } from '../paths'
+import { BESPOK3D, DAEMON_BASE, PATHS, PRINTER_DATA } from '../paths'
 import { patchNginx, patchS90lmd } from '../stock-patches'
 import {
   bespok3dIncludeCommand,
@@ -17,10 +17,27 @@ import {
 // and Moonraker configs. Every edit here is minimal and additive, so a printer keeps working exactly
 // as it did before, and every one is idempotent, so a re-enroll never doubles it up.
 
-export async function stepDeployS99(ssh: SshSession): Promise<void> {
+const BOOT_DISPATCHER = 'S99bespok3d'
+const INSTALLED_DISPATCHER = `/etc/init.d/${BOOT_DISPATCHER}`
+// The daemon step leaves the dispatcher beside the daemon it installs, and a daemon the app keeps
+// because it is newer has its own copy there.
+const DAEMON_DISPATCHER = `${DAEMON_BASE}/${BOOT_DISPATCHER}`
+
+async function daemonCarriesDispatcher(ssh: SshSession): Promise<boolean> {
+  return (await ssh.exec(`test -f ${DAEMON_DISPATCHER} && echo yes || echo no`)).trim() === 'yes'
+}
+
+async function writePackagedDispatcher(ssh: SshSession): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
-  await ssh.putBytes('/etc/init.d/S99bespok3d', signedPackage.payloadBytes('S99bespok3d'))
-  await ssh.exec('chmod 755 /etc/init.d/S99bespok3d')
+  await ssh.putBytes(INSTALLED_DISPATCHER, signedPackage.payloadBytes(BOOT_DISPATCHER))
+}
+
+// The printer boots with the dispatcher of the daemon it runs. The package's copy is written only when
+// the daemon there was installed before the dispatcher travelled with it.
+export async function stepDeployS99(ssh: SshSession): Promise<void> {
+  if (await daemonCarriesDispatcher(ssh)) await ssh.exec(`cp ${DAEMON_DISPATCHER} ${INSTALLED_DISPATCHER}`)
+  else await writePackagedDispatcher(ssh)
+  await ssh.exec(`chmod 755 ${INSTALLED_DISPATCHER}`)
 }
 
 export async function stepPatchS90lmd(ssh: SshSession): Promise<void> {

@@ -5,7 +5,7 @@ import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { openJinniSource } from '../jinni-deploy'
 import { syncPayload } from '../package-deploy'
-import { sha256Of } from '../payload-hashes'
+import { parseHashList, remoteHashCommand, sha256Of } from '../payload-hashes'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
@@ -17,13 +17,15 @@ import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
 // internet. The printer's system Python, Klipper and Moonraker are never touched, so nothing bespok3d
 // installs can break the printer's own software.
 
-// These two travel in the daemon's package but are not part of its runtime tree: one is placed under
-// the bespok3d autostart directory, the other in the printer's own /etc/init.d by the stock-integration
-// step.
-const INIT_SCRIPTS = ['s10bespok3d-daemon', 'S99bespok3d']
+// The daemon's own autostart script travels in its package but is placed under the bespok3d autostart
+// directory, not in its runtime tree. The boot dispatcher (S99bespok3d) does stay in the runtime tree:
+// the stock-integration step copies it from there, so the printer always boots with the dispatcher of
+// the daemon it runs, even when the app keeps a newer daemon than the one it ships.
+const AUTOSTART_SCRIPT = 's10bespok3d-daemon'
 
 // The daemon's python dependencies, baked into its package at build time (ADR-0036).
-const WHEEL_DIR = 'wheels/'
+const WHEEL_DIR_NAME = 'wheels'
+const WHEEL_DIR = `${WHEEL_DIR_NAME}/`
 
 // An earlier release created this under a misspelled name; a printer carrying it gets it cleared.
 const LEGACY_DIR = `${BESPOK3D}/var/lib/demon`
@@ -36,13 +38,13 @@ const UPLOAD_SPAN = { from: 0, to: 0.88 }
 const AUTOSTART_MARK = 0.9
 
 function daemonRuntimePaths(signedPackage: BundledPackage): readonly string[] {
-  return signedPackage.payloadPaths.filter((payloadPath) => !INIT_SCRIPTS.includes(payloadPath))
+  return signedPackage.payloadPaths.filter((payloadPath) => payloadPath !== AUTOSTART_SCRIPT)
 }
 
 async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signedPackage: BundledPackage): Promise<void> {
   ctx.onProgress?.('Installing autostart script…', AUTOSTART_MARK)
-  const autostartPath = `${BESPOK3D}/etc/init.d/autostart/s10bespok3d-daemon`
-  await ssh.putBytes(autostartPath, signedPackage.payloadBytes('s10bespok3d-daemon'))
+  const autostartPath = `${BESPOK3D}/etc/init.d/autostart/${AUTOSTART_SCRIPT}`
+  await ssh.putBytes(autostartPath, signedPackage.payloadBytes(AUTOSTART_SCRIPT))
   await ssh.exec(`chmod 755 ${autostartPath}`)
 }
 
@@ -52,8 +54,9 @@ function wheelHashes(signedPackage: BundledPackage, runtimePaths: readonly strin
   return new Map(wheelPaths.map((wheelPath) => [wheelPath, sha256Of(signedPackage.payloadBytes(wheelPath))]))
 }
 
-// The daemon and the jinni share the daemon's directory, so they travel in one stream. An update sends
-// only the files the printer does not already hold, and runs pip only when a wheel changed.
+// The daemon and the jinni share the daemon's directory, so they travel in one stream. With
+// sendChangedFilesOnly it sends only the files whose checksum differs from the printer's, and pip runs
+// only when a wheel changed.
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
   const runtimePaths = daemonRuntimePaths(signedPackage)
@@ -72,4 +75,15 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
   await cleanSystemPython(ssh)
   await ensureVenv(ssh, ctx)
   await syncVenvDeps(ssh, ctx, wheelHashes(signedPackage, runtimePaths))
+}
+
+// When the app keeps a newer daemon than the one it ships, the daemon step does not run, yet the venv
+// can still lack that daemon's packages (a venv made afresh, a pip run cut short). The wheels that
+// daemon brought are already on the printer, so pip installs from them, and only when the venv does not
+// already hold them.
+export async function stepRefreshDaemonVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
+  const printerWheels = parseHashList(await ssh.exec(remoteHashCommand(DAEMON_BASE, [WHEEL_DIR_NAME])))
+  if (printerWheels.size === 0) return
+  await ensureVenv(ssh, ctx)
+  await syncVenvDeps(ssh, ctx, printerWheels)
 }

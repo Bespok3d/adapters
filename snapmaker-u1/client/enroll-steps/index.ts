@@ -5,7 +5,7 @@ import type { EnrollStep } from '@adapter-sdk'
 import { uploadAdapterJinni } from '../jinni-deploy'
 
 import { stepEnrollDaemonKey, stepGenerateDaemonCert } from './app-link'
-import { stepDeployDaemon } from './daemon-install'
+import { stepDeployDaemon, stepRefreshDaemonVenv } from './daemon-install'
 import { stepStartDaemon, stepVerify } from './final-checks'
 import { stepPreflight } from './preflight'
 import {
@@ -59,13 +59,6 @@ export const ENROLL_STEPS: EnrollStep[] = [
     run: (ssh, ctx) => stepCreateWorkspace(ssh, ctx),
   },
   {
-    id: 'deploy-s99',
-    label: 'Installing the startup manager',
-    detail:
-      'Writes /etc/init.d/S99bespok3d: the bespok3d init.d dispatcher. At boot it iterates /userdata/bespok3d/etc/init.d/autostart/ and starts each plugin in order.',
-    run: (ssh) => stepDeployS99(ssh),
-  },
-  {
     id: 'patch-s90lmd',
     label: 'Wiring bespok3d into the boot sequence',
     detail:
@@ -101,6 +94,13 @@ export const ENROLL_STEPS: EnrollStep[] = [
     run: (ssh, ctx) => stepDeployDaemon(ssh, ctx),
   },
   {
+    id: 'deploy-s99',
+    label: 'Installing the startup manager',
+    detail:
+      'Writes /etc/init.d/S99bespok3d: the bespok3d init.d dispatcher, copied from the daemon now in place. At boot it iterates /userdata/bespok3d/etc/init.d/autostart/ and starts each plugin in order.',
+    run: (ssh) => stepDeployS99(ssh),
+  },
+  {
     id: 'generate-daemon-cert',
     label: 'Generating daemon TLS certificate',
     detail:
@@ -132,6 +132,8 @@ export const ENROLL_STEPS: EnrollStep[] = [
 
 // Maintenance steps run by ops (not part of the enroll sequence). deploy-jinni re-uploads only the
 // device-side adapter (jinni), a subset of deploy-daemon, for the standalone jinni update.
+// refresh-daemon-venv installs the packages of the daemon already on the printer, for the app that
+// keeps a daemon newer than the one it ships.
 export const OP_STEPS: EnrollStep[] = [
   {
     id: 'deploy-jinni',
@@ -139,5 +141,12 @@ export const OP_STEPS: EnrollStep[] = [
     detail:
       'Re-uploads the device-side adapter (jinni) files to /userdata/bespok3d/var/lib/daemon/. The daemon source, cert, and plugins are left untouched.',
     run: (ssh, ctx) => uploadAdapterJinni(ssh, ctx),
+  },
+  {
+    id: 'refresh-daemon-venv',
+    label: 'Checking the daemon packages',
+    detail:
+      'Installs the packages of the daemon already on the printer into /userdata/bespok3d/venv, from the wheels it brought, when the venv does not hold them yet. The daemon files are left untouched.',
+    run: (ssh, ctx) => stepRefreshDaemonVenv(ssh, ctx),
   },
 ]
