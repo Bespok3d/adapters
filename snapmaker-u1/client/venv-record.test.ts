@@ -187,12 +187,16 @@ describe('recordCheckCommand on a real venv', () => {
 
 const DEMO_SCRIPT = '#!python\nprint("demo tool")\n'
 
+// The bytecode tag of the python every test venv is made from, so the cached .pyc the wheel ships is the
+// one pip compiles over, whatever python runs the test.
+const VENV_BYTECODE_TAG = execFileSync('python3', ['-I', '-c', 'import sys; print(sys.implementation.cache_tag)']).toString().trim()
+
 // A wheel laid out as the binary distribution format has it: a module and the bytecode its build cached,
 // a module and a script sent through the .data dir, and a dist-info dir whose RECORD lists every file.
 function demoWheelFiles(moduleSource: string, extraModule: string | null): Record<string, string> {
   const payloadFiles: Record<string, string> = {
     'demo/__init__.py': moduleSource,
-    'demo/__pycache__/__init__.cpython-311.pyc': 'shipped bytecode',
+    [`demo/__pycache__/__init__.${VENV_BYTECODE_TAG}.pyc`]: 'shipped bytecode',
     'demo-1.0.data/scripts/demo-tool': DEMO_SCRIPT,
     'demo-1.0.dist-info/METADATA': 'Metadata-Version: 2.1\nName: demo\nVersion: 1.0\n',
     'demo-1.0.dist-info/WHEEL': 'Wheel-Version: 1.0\nGenerator: bespok3d-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n',

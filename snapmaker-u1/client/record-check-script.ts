@@ -18,30 +18,34 @@
 // land on a path that starts with "..", and pip rewrites the scripts, so those are left out on both sides.
 // The embedded Python holds no single quote, as the whole script travels on the command line in one.
 export const RECORD_CHECK_SCRIPT = `
+from __future__ import annotations
 import base64, csv, glob, hashlib, io, os, posixpath, sys, sysconfig, zipfile, zlib
 
 GENERATED_ON_INSTALL = ("INSTALLER", "REQUESTED", "direct_url.json")
 SITE_PACKAGES_SCHEMES = ("purelib", "platlib")
 WHEEL_READ_ERRORS = (OSError, EOFError, ValueError, RuntimeError, zipfile.BadZipFile, zlib.error, csv.Error)
 
-def file_holds(site_dir, record_row):
+def installed_file_digest(site_dir: str, record_path: str, algorithm: str) -> bytes:
+    with open(os.path.join(site_dir, record_path), "rb") as installed_file:
+        return hashlib.new(algorithm, installed_file.read()).digest()
+
+def file_holds(site_dir: str, record_row: list[str]) -> bool:
     if "__pycache__" in record_row[0].split("/"):
         return True
     try:
         algorithm, recorded_digest = record_row[1].split("=", 1)
-        with open(os.path.join(site_dir, record_row[0]), "rb") as installed_file:
-            installed_digest = hashlib.new(algorithm, installed_file.read()).digest()
+        installed_digest = installed_file_digest(site_dir, record_row[0], algorithm)
     except (OSError, ValueError, TypeError):
         return False
     return base64.urlsafe_b64encode(installed_digest).rstrip(b"=").decode() == recorded_digest.rstrip("=")
 
-def dist_state(site_dir, record_rows):
+def dist_state(site_dir: str, record_rows: list[list[str]]) -> str:
     digested_rows = [record_row for record_row in record_rows if len(record_row) > 1 and record_row[1]]
     if not digested_rows:
         return "unrecorded"
     return "intact" if all(file_holds(site_dir, record_row) for record_row in digested_rows) else "damaged"
 
-def judged_row(record_row):
+def judged_row(record_row: list[str]) -> tuple[str, str] | None:
     if len(record_row) < 2 or not record_row[1]:
         return None
     path_parts = posixpath.normpath(record_row[0]).split("/")
@@ -51,23 +55,26 @@ def judged_row(record_row):
         return None
     return ("/".join(path_parts), record_row[1])
 
-def record_fingerprint(record_rows):
+def record_fingerprint(record_rows: list[list[str]]) -> str:
     judged_rows = sorted({judged for judged in map(judged_row, record_rows) if judged})
     if not judged_rows:
         return "-"
     return hashlib.sha256(repr(judged_rows).encode()).hexdigest()
 
-def installed_line(site_dir, dist_info):
+def installed_record_rows(dist_info: str) -> list[list[str]]:
+    with open(os.path.join(dist_info, "RECORD"), newline="", encoding="utf-8") as record_file:
+        return list(csv.reader(record_file))
+
+def installed_line(site_dir: str, dist_info: str) -> str:
     try:
-        with open(os.path.join(dist_info, "RECORD"), newline="", encoding="utf-8") as record_file:
-            record_rows = list(csv.reader(record_file))
+        record_rows = installed_record_rows(dist_info)
     except (OSError, UnicodeDecodeError, csv.Error):
         record_rows = []
     state = dist_state(site_dir, record_rows)
     fingerprint = "-" if state == "unrecorded" else record_fingerprint(record_rows)
     return "\\t".join(("installed", state, fingerprint, dist_info))
 
-def site_packages_row(wheel_row):
+def site_packages_row(wheel_row: list[str]) -> list[str] | None:
     path_parts = posixpath.normpath(wheel_row[0]).split("/")
     if not path_parts[0].endswith(".data"):
         return wheel_row
@@ -75,23 +82,25 @@ def site_packages_row(wheel_row):
         return ["/".join(path_parts[2:])] + wheel_row[1:]
     return None
 
-def wheel_record_rows(wheel_file):
+def wheel_record_rows(wheel_file: str) -> list[list[str]]:
     with zipfile.ZipFile(wheel_file) as wheel_zip:
         record_names = [name for name in wheel_zip.namelist() if name.count("/") == 1 and name.endswith(".dist-info/RECORD")]
         record_text = wheel_zip.read(record_names[0]).decode("utf-8") if len(record_names) == 1 else ""
     return [record_row for record_row in csv.reader(io.StringIO(record_text, newline="")) if record_row]
 
-def wheel_fingerprint(wheel_file):
+def wheel_fingerprint(wheel_file: str) -> str:
     try:
         wheel_rows = wheel_record_rows(wheel_file)
     except WHEEL_READ_ERRORS:
         return "-"
     return record_fingerprint([installed_row for installed_row in map(site_packages_row, wheel_rows) if installed_row])
 
+def wheel_line(wheel_file: str) -> str:
+    return "\\t".join(("wheel", wheel_fingerprint(wheel_file), wheel_file))
+
 site_dirs = sorted({os.path.realpath(sysconfig.get_path(scheme_key)) for scheme_key in SITE_PACKAGES_SCHEMES})
-for site_dir in site_dirs:
-    for dist_info in sorted(glob.glob(os.path.join(site_dir, "*.dist-info"))):
-        print(installed_line(site_dir, dist_info))
-for wheel_file in sys.argv[1:]:
-    print("wheel", wheel_fingerprint(wheel_file), wheel_file, sep="\\t")
+dist_infos = [(site_dir, dist_info) for site_dir in site_dirs for dist_info in sorted(glob.glob(os.path.join(site_dir, "*.dist-info")))]
+installed_lines = [installed_line(site_dir, dist_info) for site_dir, dist_info in dist_infos]
+wheel_lines = [wheel_line(wheel_file) for wheel_file in sys.argv[1:]]
+print("\\n".join(installed_lines + wheel_lines))
 `

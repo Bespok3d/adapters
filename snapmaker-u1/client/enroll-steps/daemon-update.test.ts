@@ -64,7 +64,9 @@ function wheelFingerprint(wheelContent: string): string {
 }
 
 function markPackage(printer: FakePrinter, distInfoPath: string, state: DistributionState): void {
-  printer.venvPackages.set(distInfoPath, { state, recordFingerprint: printer.venvPackages.get(distInfoPath)?.recordFingerprint ?? '' })
+  const venvPackage = printer.venvPackages.get(distInfoPath)
+  if (!venvPackage) throw new Error(`No package in the venv at ${distInfoPath} to mark`)
+  printer.venvPackages.set(distInfoPath, { ...venvPackage, state })
 }
 
 describe('stepDeployDaemon as an update', () => {

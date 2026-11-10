@@ -128,16 +128,19 @@ describe('ensureVenv', () => {
     return { ssh, commands }
   }
 
-  it('asks the venv python to run as the venv', async () => {
+  it('asks the venv python to run as the venv, and the venv pip to run', async () => {
     const venv = probedSession('yes')
 
     await ensureVenv(venv.ssh, silentEnroll)
 
-    expect(venv.commands).toEqual([`${BESPOK3D}/venv/bin/python3 -I -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null && echo yes || echo no`])
+    expect(venv.commands).toEqual([
+      `${BESPOK3D}/venv/bin/python3 -I -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null && ` +
+      `${BESPOK3D}/venv/bin/pip --version >/dev/null 2>&1 && echo yes || echo no`,
+    ])
   })
 
   // A venv whose python is a link to nowhere still has the file, so only running it tells.
-  it('makes the venv again from nothing when its python does not run', async () => {
+  it('makes the venv again from nothing when the probe finds it does not run', async () => {
     const venv = probedSession('no')
 
     await ensureVenv(venv.ssh, silentEnroll)

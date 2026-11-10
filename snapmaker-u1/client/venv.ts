@@ -11,7 +11,7 @@ import { BESPOK3D, DAEMON_BASE } from './paths'
 const VENV = `${BESPOK3D}/venv`
 const PIP_INSTALL_FROM_FILES = `${VENV}/bin/pip install --no-index --no-deps`
 const RUNS_AS_VENV = 'import sys; sys.exit(sys.prefix == sys.base_prefix)'
-const VENV_PYTHON_PROBE = `${VENV}/bin/python3 -I -c ${shellQuote(RUNS_AS_VENV)} 2>/dev/null && echo yes || echo no`
+const VENV_PROBE = `${VENV}/bin/python3 -I -c ${shellQuote(RUNS_AS_VENV)} 2>/dev/null && ${VENV}/bin/pip --version >/dev/null 2>&1 && echo yes || echo no`
 
 // The daemon must never pip into the system, Klipper, or Moonraker interpreters. A prior enroll may
 // have leaked daemon deps into the overlay's system site-packages; strip them so only the venv carries
@@ -30,12 +30,13 @@ export async function cleanSystemPython(ssh: SshSession): Promise<void> {
   )
 }
 
-// The venv counts only when its own python runs, and runs as the venv: a venv that lost pyvenv.cfg runs as
-// the system python, and pip would install the daemon packages there. A broken venv is made again from
-// nothing, as python3 -m venv keeps a python link it finds even when that link points nowhere.
+// The venv counts only when its own python runs, and runs as the venv, and its pip runs: a venv that lost
+// pyvenv.cfg runs as the system python, and pip would install the daemon packages there, and a venv made
+// in a run cut short can hold a python and no pip. A broken venv is made again from nothing, as
+// python3 -m venv keeps a python link it finds even when that link points nowhere.
 export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  const venvPythonWorks = (await ssh.exec(VENV_PYTHON_PROBE)).trim() === 'yes'
-  if (venvPythonWorks) return
+  const venvWorks = (await ssh.exec(VENV_PROBE)).trim() === 'yes'
+  if (venvWorks) return
   ctx.onProgress?.('Creating Python virtual environment…')
   await ssh.exec(`rm -rf ${VENV} && python3 -m venv ${VENV}`)
 }
