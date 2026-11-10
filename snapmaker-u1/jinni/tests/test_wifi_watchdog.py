@@ -245,6 +245,22 @@ def test_a_failed_restore_still_restarts_the_wifi_and_logs_once(
     assert "could not check, restore or restart its Wi-Fi" in caplog.text
 
 
+# The bug: a restart that failed too hid why the restore failed.
+def test_a_failed_restore_and_restart_log_both_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    screen_copy = tmp_path / "gui.conf"
+    screen_copy.write_text(SCREEN_NETWORK)
+    _point_at(monkeypatch, screen_copy, tmp_path / "missing-dir" / "live.conf")
+    _install_wlan_tools(tmp_path, 'echo "no wpa_supplicant $$" >&2\nexit 1')
+    _lose_the_ip(monkeypatch, tmp_path)
+    failure = _heal_twice(caplog)
+    assert "ifup" in failure
+    assert "live.conf" in failure
+    assert len(caplog.records) == 1
+    assert "no wpa_supplicant" in caplog.text
+
+
 def test_a_round_that_works_again_says_so(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -447,8 +463,6 @@ def test_the_kept_copy_keeps_its_permissions(
     wifi_watchdog._keep_wifi()
     assert persistent_config.stat().st_mode & 0o777 == 0o600
     assert given_owners == [kept_owner]
-
-
 
 
 # The bug: a link that kept failing rewrote /userdata every round, wearing the storage.

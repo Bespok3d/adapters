@@ -80,17 +80,25 @@ def _check_and_heal() -> None:
         _restore_wifi()
 
 
+def _failure_text(error: BaseException) -> str:
+    # A restart that fails after a failed restore carries the restore's error as its context. The
+    # restore is why the Wi-Fi cannot come back, so the log names both.
+    if error.__context__ is None:
+        return str(error)
+    return f"{error}, after: {error.__context__}"
+
+
 def _failure_detail(error: Exception) -> str:
     if isinstance(error, subprocess.CalledProcessError) and error.output:
-        return f"{error} {error.output.strip()}"
-    return str(error)
+        return f"{_failure_text(error)} {error.output.strip()}"
+    return _failure_text(error)
 
 
 def _logged_failure(error: Exception, failed_message: str, last_failure: str) -> str:
     """What failed, written to the log unless the last round failed the same way."""
     # The same failure every round would flood the daemon log. ifup's output changes from try to
     # try, so it is logged but does not count as a new failure.
-    failure = str(error)
+    failure = _failure_text(error)
     if failure != last_failure:
         logger.warning(failed_message, _failure_detail(error))
     return failure
