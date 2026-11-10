@@ -258,12 +258,12 @@ describe('stepRefreshDaemonVenv', () => {
     expect(pipRuns(printer)).toEqual([])
   })
 
-  it('touches nothing on a printer that holds no wheels', async () => {
+  it('only removes the old wheel list and lists the wheels on a printer that holds none', async () => {
     const printer = fakePrinter()
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
-    expect(printer.commands).toHaveLength(1)
+    expect(printer.commands).toEqual([`rm -f ${BESPOK3D}/venv/.bespok3d-wheels`, expect.stringContaining('sha256sum')])
     expect(printer.files.size).toBe(0)
   })
 })
@@ -327,13 +327,15 @@ function expectVenvMadeAgainWhole(printer: FakePrinter): void {
 
 // The check runs on the venv's own python, so a venv whose python fails is made again, then filled.
 describe('stepRefreshDaemonVenv on a venv whose python does not run', () => {
-  it('makes the venv again and installs every wheel into it', async () => {
+  it('makes the venv again once and installs every wheel into it, without checking it', async () => {
     const printer = await refreshedPrinter()
     printer.venvPythonBroken = true
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
     expectVenvMadeAgainWhole(printer)
+    expect(printer.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
+    expect(venvChecks(printer)).toEqual([])
   })
 })
 
@@ -389,6 +391,14 @@ describe('the wheel list an earlier release kept in the venv', () => {
 
     expect(printer.files.has(LEGACY_WHEEL_MARKER)).toBe(false)
   })
+
+  it('is removed by a venv refresh on a printer that holds no wheels', async () => {
+    const printer = fakePrinter({ [LEGACY_WHEEL_MARKER]: 'an old wheel list' })
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.files.has(LEGACY_WHEEL_MARKER)).toBe(false)
+  })
 })
 
 describe('stepRefreshDaemonVenv on wheels that changed', () => {
@@ -425,5 +435,50 @@ describe('stepRefreshDaemonVenv on wheels that changed', () => {
 
     expect(printer.venvPackages.has(OLDER_FASTAPI_DIST_INFO)).toBe(false)
     expect(printer.venvPackages.get(FASTAPI_DIST_INFO)?.state).toBe('intact')
+  })
+})
+
+// 0.99.1 sorts after 0.115.0 as text, so only version order picks the right one.
+const OLDER_FASTAPI_WHEEL = `${DAEMON_BASE}/wheels/fastapi-0.99.1-py3-none-any.whl`
+
+async function printerWithOlderWheelBeside(): Promise<FakePrinter> {
+  const printer = await refreshedPrinter()
+  printer.files.set(OLDER_FASTAPI_WHEEL, Buffer.from('the fastapi an older daemon brought'))
+
+  return printer
+}
+
+// An earlier release could leave the wheels of an older daemon beside the newer ones, and the printer
+// keeps no list of which wheels its daemon brought, so the newest of each package is the one that counts.
+describe('stepRefreshDaemonVenv on a printer holding two versions of one package', () => {
+  it('keeps the venv as it is and removes the older wheel', async () => {
+    const printer = await printerWithOlderWheelBeside()
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([])
+    expect(printer.files.has(OLDER_FASTAPI_WHEEL)).toBe(false)
+    expect(printer.files.has(FASTAPI_WHEEL)).toBe(true)
+    expect(venvStates(printer)).toEqual(REFRESHED_VENV_WHOLE)
+  })
+
+  it('installs only the newest version into a venv that holds neither', async () => {
+    const printer = await printerWithOlderWheelBeside()
+    printer.venvPackages.delete(FASTAPI_DIST_INFO)
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([FASTAPI_REINSTALL])
+    expect(venvStates(printer)).toEqual(REFRESHED_VENV_WHOLE)
+  })
+
+  it('fills a venv made again with only the newest version', async () => {
+    const printer = await printerWithOlderWheelBeside()
+    printer.venvPythonBroken = true
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expectVenvMadeAgainWhole(printer)
+    expect(printer.files.has(OLDER_FASTAPI_WHEEL)).toBe(false)
   })
 })

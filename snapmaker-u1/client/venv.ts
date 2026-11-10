@@ -16,7 +16,7 @@ const VENV_PROBE = `${VENV}/bin/python3 -I -c ${shellQuote(RUNS_AS_VENV)} 2>/dev
 const VENV_CHECK_CRASHED = 'venv-check-crashed'
 
 // An earlier release kept the list of the wheels pip last installed in this file. Nothing reads it now,
-// so it goes from every printer that still carries one.
+// so every update and every venv refresh removes it, whether or not the printer holds a wheel.
 const LEGACY_WHEEL_MARKER = `${VENV}/.bespok3d-wheels`
 
 // The daemon must never pip into the system, Klipper, or Moonraker interpreters. A prior enroll may
@@ -41,15 +41,15 @@ async function remakeVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   await ssh.exec(`rm -rf ${VENV} && python3 -m venv ${VENV}`)
 }
 
+export async function removeLegacyWheelMarker(ssh: SshSession): Promise<void> {
+  await ssh.exec(`rm -f ${LEGACY_WHEEL_MARKER}`)
+}
+
 // The venv counts only when its own python runs, and runs as the venv, and its pip runs: a venv that lost
 // pyvenv.cfg runs as the system python, and pip would install the daemon packages there, and a venv made
-// in a run cut short can hold a python and no pip. A broken venv is made again from nothing, as
-// python3 -m venv keeps a python link it finds even when that link points nowhere.
-export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  await ssh.exec(`rm -f ${LEGACY_WHEEL_MARKER}`)
-  const venvWorks = (await ssh.exec(VENV_PROBE)).trim() === 'yes'
-  if (venvWorks) return
-  await remakeVenv(ssh, ctx)
+// in a run cut short can hold a python and no pip.
+async function venvRuns(ssh: SshSession): Promise<boolean> {
+  return (await ssh.exec(VENV_PROBE)).trim() === 'yes'
 }
 
 // A python that passes the probe can still crash inside the check, on a library module it lost or that
@@ -60,11 +60,21 @@ async function crashedOrVenvCheck(ssh: SshSession, remoteWheelPaths: readonly st
   return checkOutput.trim().endsWith(VENV_CHECK_CRASHED) ? null : parseRecordCheck(checkOutput)
 }
 
-// A venv whose check crashes, or whose own pip is not whole, is made again once and gets every wheel.
+// pip installs every other package, so a venv is trusted only when it runs, its check runs, and its own
+// pip is whole.
+async function trustedVenvCheck(ssh: SshSession, remoteWheelPaths: readonly string[]): Promise<RecordCheck | null> {
+  if (!(await venvRuns(ssh))) return null
+  const venvCheck = await crashedOrVenvCheck(ssh, remoteWheelPaths)
+
+  return venvCheck !== null && pipIsWhole(venvCheck) ? venvCheck : null
+}
+
+// The one place the venv is judged fit to keep. One that is not is made again from nothing, as
+// python3 -m venv keeps a python link it finds even when that link points nowhere, and gets every wheel.
 // The new venv is not checked again, so a venv that stays broken fails at pip instead of looping.
 async function plannedRepair(ssh: SshSession, ctx: EnrollContext, remoteWheelPaths: readonly string[]): Promise<VenvRepair> {
-  const venvCheck = await crashedOrVenvCheck(ssh, remoteWheelPaths)
-  if (venvCheck !== null && pipIsWhole(venvCheck)) return venvRepair(remoteWheelPaths, venvCheck)
+  const venvCheck = await trustedVenvCheck(ssh, remoteWheelPaths)
+  if (venvCheck !== null) return venvRepair(remoteWheelPaths, venvCheck)
   await remakeVenv(ssh, ctx)
 
   return { wheelPaths: [...remoteWheelPaths], unrecordedDistInfos: [] }
@@ -79,7 +89,6 @@ async function plannedRepair(ssh: SshSession, ctx: EnrollContext, remoteWheelPat
 // installed from other bytes is installed again, and no other. --force-reinstall, because plain pip skips
 // a version that is already there, whole or not.
 export async function syncVenvDeps(ssh: SshSession, ctx: EnrollContext, wheelPaths: readonly string[]): Promise<void> {
-  if (wheelPaths.length === 0) return
   const remoteWheelPaths = wheelPaths.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`)
   const repair = await plannedRepair(ssh, ctx, remoteWheelPaths)
   if (repair.wheelPaths.length === 0) return

@@ -124,10 +124,18 @@ function pipInstallWheel(printer: FakePrinter, venvDir: string, forced: boolean,
   printer.venvPackages.set(distInfoPath, { state: 'intact', recordFingerprint: sha256Hex(wheelBytes) })
 }
 
+// pip matches project names as PEP 503 does: case aside, and any run of "-", "_" or "." as one separator.
+function wheelProjectName(wheelPath: string): string {
+  return posix.basename(wheelPath).split('-')[0].toLowerCase().replace(/[-_.]+/g, '_')
+}
+
+// pip refuses a run that names two versions of one project, before it installs anything.
 function pipInstall(printer: FakePrinter, command: string): void {
   const venvDir = command.split('/bin/pip ')[0]
   const forced = command.includes(' --force-reinstall ')
-  quotedPaths(command).forEach((wheelPath) => pipInstallWheel(printer, venvDir, forced, wheelPath))
+  const wheelPaths = quotedPaths(command)
+  if (new Set(wheelPaths.map(wheelProjectName)).size < wheelPaths.length) throw new Error('pip: two versions of one package in one run')
+  wheelPaths.forEach((wheelPath) => pipInstallWheel(printer, venvDir, forced, wheelPath))
 }
 
 function installedLine([distInfoPath, venvPackage]: [string, VenvPackage]): string {

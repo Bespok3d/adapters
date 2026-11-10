@@ -15,20 +15,30 @@ vi.mock('electron', () => ({
 // machinery in behind it, which a shell-quoting helper has no business needing.
 vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
 
-import { ensureVenv, syncVenvDeps } from './venv'
+import { removeLegacyWheelMarker, syncVenvDeps } from './venv'
 import { BESPOK3D, DAEMON_BASE } from './paths'
 
 type RecordedEnroll = { commands: string[], uploads: string[], ssh: SshSession }
 
-// A printer that answers the venv check with the lines given and every other command with nothing.
-function recordingSession(venvCheckAnswer: string): RecordedEnroll {
+const VENV_PROBE_TAIL = ' && echo yes || echo no'
+const VENV_CHECK_TAIL = ' || echo venv-check-crashed'
+
+function printerAnswer(command: string, venvCheckAnswer: string, probeAnswer: string): string {
+  if (command.endsWith(VENV_PROBE_TAIL)) return probeAnswer
+
+  return command.includes(' -I -c ') ? venvCheckAnswer : ''
+}
+
+// A printer that answers the venv probe and the venv check with the lines given, and every other
+// command with nothing.
+function recordingSession(venvCheckAnswer: string, probeAnswer = 'yes'): RecordedEnroll {
   const commands: string[] = []
   const uploads: string[] = []
   const ssh = {
     exec: async (command: string) => {
       commands.push(command)
 
-      return command.includes(' -I -c ') ? venvCheckAnswer : ''
+      return printerAnswer(command, venvCheckAnswer, probeAnswer)
     },
     putBytes: async (remotePath: string) => {
       uploads.push(remotePath)
@@ -85,7 +95,7 @@ describe('syncVenvDeps', () => {
 
     await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
-    const checkCommand = enroll.commands.find((command) => command.includes(' -I -c '))
+    const checkCommand = enroll.commands.find((command) => command.endsWith(VENV_CHECK_TAIL))
     expect(quotedArgumentsOf(checkCommand ?? '').slice(2)).toEqual(REMOTE_PAYLOAD_WHEELS)
   })
 
@@ -110,12 +120,12 @@ describe('syncVenvDeps', () => {
     expect(installCommand.replace(/'[^']+'/g, '').trim()).toBe(`${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall`)
   })
 
-  it('runs nothing at all when the package declares no wheels', async () => {
-    const enroll = recordingSession('')
+  it('installs nothing when the package declares no wheels', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE)
 
     await syncVenvDeps(enroll.ssh, silentEnroll, [])
 
-    expect(enroll.commands).toEqual([])
+    expect(enroll.commands.filter((command) => command.includes('pip install'))).toEqual([])
   })
 })
 
@@ -139,52 +149,52 @@ describe('syncVenvDeps on a venv it cannot trust', () => {
 
     await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
-    expect(enroll.commands.filter((command) => command.endsWith(' || echo venv-check-crashed'))).toHaveLength(1)
+    expect(enroll.commands.filter((command) => command.endsWith(VENV_CHECK_TAIL))).toHaveLength(1)
     expect(enroll.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
     expect(quotedArgumentsOf(installCommandOf(enroll.commands))).toEqual(REMOTE_PAYLOAD_WHEELS)
   })
 })
 
-describe('ensureVenv', () => {
-  function probedSession(probeAnswer: string): { ssh: SshSession, commands: string[] } {
-    const commands: string[] = []
-    const ssh = {
-      exec: async (command: string) => {
-        commands.push(command)
+describe('syncVenvDeps on a venv that does not run', () => {
+  it('asks the venv python to run as the venv, and the venv pip to run, before anything else', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE)
 
-        return command.endsWith(' && echo yes || echo no') ? probeAnswer : ''
-      },
-    } as unknown as SshSession
+    await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
-    return { ssh, commands }
-  }
-
-  it('asks the venv python to run as the venv, and the venv pip to run', async () => {
-    const probedPrinter = probedSession('yes')
-
-    await ensureVenv(probedPrinter.ssh, silentEnroll)
-
-    expect(probedPrinter.commands).toEqual([
-      `rm -f ${BESPOK3D}/venv/.bespok3d-wheels`,
+    expect(enroll.commands[0]).toBe(
       `${BESPOK3D}/venv/bin/python3 -I -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null && ` +
       `${BESPOK3D}/venv/bin/pip --version >/dev/null 2>&1 && echo yes || echo no`,
-    ])
+    )
   })
 
-  // A venv whose python is a link to nowhere still has the file, so only running it tells.
-  it('makes the venv again from nothing when the probe finds it does not run', async () => {
-    const probedPrinter = probedSession('no')
+  // A venv whose python is a link to nowhere still has the file, so only running it tells. The venv made
+  // again is not checked, so one run never makes it twice.
+  it('makes the venv again from nothing once, checks nothing, and installs every wheel', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE, 'no')
 
-    await ensureVenv(probedPrinter.ssh, silentEnroll)
+    await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
-    expect(probedPrinter.commands).toContain(VENV_REMAKE)
+    expect(enroll.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
+    expect(enroll.commands.filter((command) => command.endsWith(VENV_CHECK_TAIL))).toEqual([])
+    expect(quotedArgumentsOf(installCommandOf(enroll.commands))).toEqual(REMOTE_PAYLOAD_WHEELS)
   })
 
-  it('removes the wheel list an earlier release kept in the venv', async () => {
-    const probedPrinter = probedSession('yes')
+  it('makes the venv even for a package that declares no wheels, and installs nothing', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE, 'no')
 
-    await ensureVenv(probedPrinter.ssh, silentEnroll)
+    await syncVenvDeps(enroll.ssh, silentEnroll, [])
 
-    expect(probedPrinter.commands).toContain(`rm -f ${BESPOK3D}/venv/.bespok3d-wheels`)
+    expect(enroll.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
+    expect(enroll.commands.filter((command) => command.includes('pip install'))).toEqual([])
+  })
+})
+
+describe('removeLegacyWheelMarker', () => {
+  it('removes the wheel list an earlier release kept in the venv, and nothing else', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE)
+
+    await removeLegacyWheelMarker(enroll.ssh)
+
+    expect(enroll.commands).toEqual([`rm -f ${BESPOK3D}/venv/.bespok3d-wheels`])
   })
 })

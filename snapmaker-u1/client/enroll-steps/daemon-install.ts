@@ -4,11 +4,13 @@ import { openSystemPackage } from '@adapter-sdk'
 import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { openJinniSource } from '../jinni-deploy'
+import { newestWheelPerProject } from '../newest-wheels'
 import { syncPayload } from '../package-deploy'
 import { parseHashList, remoteHashCommand } from '../payload-hashes'
 import { DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
-import { cleanSystemPython, ensureVenv, syncVenvDeps } from '../venv'
+import { shellArguments } from '../shell-arguments'
+import { cleanSystemPython, removeLegacyWheelMarker, syncVenvDeps } from '../venv'
 
 // Putting the daemon on the printer: its Python source, the device-side jinni it drives, its autostart
 // script, and its own virtualenv. Every byte comes out of the signed daemon package: the published one
@@ -67,17 +69,26 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
   })
   await deployAutostartScript(ssh, ctx, signedPackage)
   await cleanSystemPython(ssh)
-  await ensureVenv(ssh, ctx)
+  await removeLegacyWheelMarker(ssh)
   await syncVenvDeps(ssh, ctx, runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR)))
+}
+
+async function removeStaleWheels(ssh: SshSession, staleWheels: readonly string[]): Promise<void> {
+  if (staleWheels.length === 0) return
+  await ssh.exec(`rm -f ${shellArguments(staleWheels.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`))}`)
 }
 
 // When the app keeps a newer daemon than the one it ships, the daemon step does not run, yet the venv
 // can still lack that daemon's packages (a venv made afresh, a pip run cut short, a file lost since). The
 // wheels that daemon brought are already on the printer, so pip installs from them, and only the packages
-// the venv does not hold whole.
+// the venv does not hold whole. The printer keeps no list of the wheels its daemon brought, and an
+// earlier release left the wheels of an older daemon beside them, so only the newest wheel of each
+// package counts and the older ones are removed.
 export async function stepRefreshDaemonVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  const printerWheels = parseHashList(await ssh.exec(remoteHashCommand(DAEMON_BASE, [WHEEL_DIR_NAME])))
-  if (printerWheels.size === 0) return
-  await ensureVenv(ssh, ctx)
-  await syncVenvDeps(ssh, ctx, [...printerWheels.keys()])
+  await removeLegacyWheelMarker(ssh)
+  const printerWheels = [...parseHashList(await ssh.exec(remoteHashCommand(DAEMON_BASE, [WHEEL_DIR_NAME]))).keys()]
+  if (printerWheels.length === 0) return
+  const currentWheels = newestWheelPerProject(printerWheels)
+  await removeStaleWheels(ssh, printerWheels.filter((wheelPath) => !currentWheels.includes(wheelPath)))
+  await syncVenvDeps(ssh, ctx, currentWheels)
 }

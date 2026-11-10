@@ -9,6 +9,7 @@ import { shellQuote } from '@adapter-sdk'
 
 import { RECORD_CHECK_SCRIPT } from './record-check-script'
 import { shellArguments } from './shell-arguments'
+import { distributionKey, projectName } from './wheel-names'
 
 const DISTRIBUTION_STATES = ['intact', 'damaged', 'unrecorded'] as const
 export type DistributionState = typeof DISTRIBUTION_STATES[number]
@@ -93,18 +94,6 @@ export function parseRecordCheck(checkOutput: string): RecordCheck {
     installed: checkLinesOfKind(checkLines, 'installed').map(installedDistributionOf),
     wheelFingerprints: new Map(checkLinesOfKind(checkLines, 'wheel').map(wheelFingerprintOf)),
   }
-}
-
-// PEP 503 names match case-insensitively, any run of "-", "_" or "." being one separator. A wheel file and
-// the dist-info dir it installs both start with "<name>-<version>", and neither part holds a "-".
-function projectName(nameVersionStem: string): string {
-  return nameVersionStem.split('-')[0].toLowerCase().replace(/[-_.]+/g, '_')
-}
-
-function distributionKey(nameVersionStem: string): string {
-  const version = nameVersionStem.split('-')[1] ?? ''
-
-  return `${projectName(nameVersionStem)}-${version.toLowerCase()}`
 }
 
 function distInfoStem(distribution: InstalledDistribution): string {
