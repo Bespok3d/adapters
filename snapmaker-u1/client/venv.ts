@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { shellQuote } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { shellArguments } from './shell-arguments'
@@ -9,6 +10,8 @@ import { BESPOK3D, DAEMON_BASE } from './paths'
 
 const VENV = `${BESPOK3D}/venv`
 const PIP_INSTALL_FROM_FILES = `${VENV}/bin/pip install --no-index --no-deps`
+const RUNS_AS_VENV = 'import sys; sys.exit(sys.prefix == sys.base_prefix)'
+const VENV_PYTHON_PROBE = `${VENV}/bin/python3 -I -c ${shellQuote(RUNS_AS_VENV)} 2>/dev/null && echo yes || echo no`
 
 // The daemon must never pip into the system, Klipper, or Moonraker interpreters. A prior enroll may
 // have leaked daemon deps into the overlay's system site-packages; strip them so only the venv carries
@@ -27,12 +30,14 @@ export async function cleanSystemPython(ssh: SshSession): Promise<void> {
   )
 }
 
+// The venv counts only when its own python runs, and runs as the venv: a venv that lost pyvenv.cfg runs as
+// the system python, and pip would install the daemon packages there. A broken venv is made again from
+// nothing, as python3 -m venv keeps a python link it finds even when that link points nowhere.
 export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<void> {
-  const exists = (await ssh.exec(`test -x ${VENV}/bin/python3 && echo yes || echo no`)).trim()
-  if (exists !== 'yes') {
-    ctx.onProgress?.('Creating Python virtual environment…')
-    await ssh.exec(`python3 -m venv ${VENV}`)
-  }
+  const venvPythonWorks = (await ssh.exec(VENV_PYTHON_PROBE)).trim() === 'yes'
+  if (venvPythonWorks) return
+  ctx.onProgress?.('Creating Python virtual environment…')
+  await ssh.exec(`rm -rf ${VENV} && python3 -m venv ${VENV}`)
 }
 
 // The daemon's dependencies come out of the daemon's own package, as wheel FILES already sitting on the

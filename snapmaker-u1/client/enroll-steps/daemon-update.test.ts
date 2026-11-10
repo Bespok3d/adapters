@@ -253,6 +253,20 @@ describe('stepRefreshDaemonVenv on a venv whose files changed', () => {
   })
 })
 
+// The check runs on the venv's own python, so a venv whose python fails is made again, then filled.
+describe('stepRefreshDaemonVenv on a venv whose python does not run', () => {
+  it('makes the venv again and installs every wheel into it', async () => {
+    const printer = await refreshedPrinter()
+    printer.venvPythonBroken = true
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.commands).toContain(`rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`)
+    expect(pipRuns(printer)).toHaveLength(1)
+    expect([...printer.venvPackages.values()].map((venvPackage) => venvPackage.state)).toEqual(['intact', 'intact'])
+  })
+})
+
 describe('stepRefreshDaemonVenv on wheels that changed', () => {
   it('installs again only the wheel rebuilt at the version the venv holds', async () => {
     const printer = await refreshedPrinter()

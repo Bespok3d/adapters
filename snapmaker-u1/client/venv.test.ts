@@ -115,18 +115,33 @@ describe('syncVenvDeps', () => {
 })
 
 describe('ensureVenv', () => {
-  it('makes the venv when it has no python', async () => {
+  function probedSession(probeAnswer: string): { ssh: SshSession, commands: string[] } {
     const commands: string[] = []
     const ssh = {
       exec: async (command: string) => {
         commands.push(command)
 
-        return command.startsWith('test -x') ? 'no' : ''
+        return command.endsWith(' && echo yes || echo no') ? probeAnswer : ''
       },
     } as unknown as SshSession
 
-    await ensureVenv(ssh, silentEnroll)
+    return { ssh, commands }
+  }
 
-    expect(commands).toContain(`python3 -m venv ${BESPOK3D}/venv`)
+  it('asks the venv python to run as the venv', async () => {
+    const venv = probedSession('yes')
+
+    await ensureVenv(venv.ssh, silentEnroll)
+
+    expect(venv.commands).toEqual([`${BESPOK3D}/venv/bin/python3 -I -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null && echo yes || echo no`])
+  })
+
+  // A venv whose python is a link to nowhere still has the file, so only running it tells.
+  it('makes the venv again from nothing when its python does not run', async () => {
+    const venv = probedSession('no')
+
+    await ensureVenv(venv.ssh, silentEnroll)
+
+    expect(venv.commands[1]).toBe(`rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`)
   })
 })

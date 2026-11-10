@@ -33,6 +33,8 @@ export interface FakePrinter {
   // The packages pip put in the venv, by dist-info dir: what a check against their RECORD finds, and which
   // wheel they came from, here the sha256 of that wheel file.
   venvPackages: Map<string, VenvPackage>
+  // The venv's python no longer runs, until the venv is made again.
+  venvPythonBroken: boolean
 }
 
 export interface VenvPackage {
@@ -138,6 +140,7 @@ function wheelLine(files: Map<string, Buffer>, wheelPath: string): string {
 
 // The check is quoted as the venv's python, the script, then the wheel paths.
 function recordCheckOf(printer: FakePrinter, command: string): string {
+  if (printer.venvPythonBroken) throw new Error('command failed')
   const wheelPaths = quotedPaths(command).slice(2)
 
   return [...[...printer.venvPackages].map(installedLine), ...wheelPaths.map((wheelPath) => wheelLine(printer.files, wheelPath))].join('')
@@ -150,17 +153,24 @@ function removePaths(printer: FakePrinter, command: string): void {
   })
 }
 
+function remakeVenv(printer: FakePrinter, venvDir: string): string {
+  removeTree(printer.files, venvDir)
+  removeTree(printer.venvPackages, venvDir)
+  printer.venvPythonBroken = false
+
+  return ''
+}
+
 function answer(printer: FakePrinter, command: string): string {
   const { files } = printer
+  const venvRemade = /^rm -rf (\S+) && python3 -m venv \1$/.exec(command)
+  if (venvRemade) return remakeVenv(printer, venvRemade[1])
   if (command.includes('sha256sum')) return hashListOf(files, command)
   if (/^(test -f|cp) /.test(command)) return fileCheckOrCopy(files, command)
-  if (command.startsWith('test -x')) return 'yes'
-  if (command.startsWith('cat ')) return files.get(command.split(' ')[1])?.toString('utf-8') ?? ''
+  if (/\/bin\/python3 -I -c .* && echo yes \|\| echo no$/.test(command)) return printer.venvPythonBroken ? 'no' : 'yes'
   if (command.includes(' -I -c ')) return recordCheckOf(printer, command)
   if (command.includes('/bin/pip install ')) pipInstall(printer, command)
   if (command.startsWith('rm -')) removePaths(printer, command)
-  const marker = /^printf %s (\S+) > (\S+)$/.exec(command)
-  if (marker) files.set(marker[2], Buffer.from(marker[1]))
 
   return ''
 }
@@ -201,6 +211,7 @@ export function fakePrinter(startingFiles: Record<string, string> = {}): FakePri
     connectionLost: false,
     failingCommand: null,
     venvPackages: new Map(),
+    venvPythonBroken: false,
     ssh: {} as SshSession,
   }
   printer.ssh = {
