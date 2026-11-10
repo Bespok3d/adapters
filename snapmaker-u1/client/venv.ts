@@ -5,10 +5,12 @@ import type { SshSession, EnrollContext } from '@adapter-sdk'
 
 import { sha256Of } from './payload-hashes'
 import type { HashesByPath } from './payload-hashes'
+import { parseRecordCheck, recordCheckCommand, venvRepair } from './venv-record'
 
 import { BESPOK3D, DAEMON_BASE } from './paths'
 
 const VENV = `${BESPOK3D}/venv`
+const PIP_INSTALL_FROM_FILES = `${VENV}/bin/pip install --no-index --no-deps`
 
 // What the last successful pip run installed: one digest over the wheels' paths and hashes.
 const WHEEL_MARKER = `${VENV}/.bespok3d-wheels`
@@ -49,9 +51,15 @@ export async function ensureVenv(ssh: SshSession, ctx: EnrollContext): Promise<v
 export async function installVenvDeps(ssh: SshSession, ctx: EnrollContext, wheelPaths: readonly string[]): Promise<void> {
   if (wheelPaths.length === 0) return
   ctx.onProgress?.('Installing daemon packages into venv; this may take a minute…')
-  const wheelFiles = wheelPaths.map((wheelPath) => shellQuote(`${DAEMON_BASE}/${wheelPath}`)).join(' ')
+  await ssh.exec(`${PIP_INSTALL_FROM_FILES} ${payloadWheelFiles(wheelPaths)}`)
+}
 
-  await ssh.exec(`${VENV}/bin/pip install --no-index --no-deps ${wheelFiles}`)
+function shellArguments(remotePaths: readonly string[]): string {
+  return remotePaths.map(shellQuote).join(' ')
+}
+
+function payloadWheelFiles(wheelPaths: readonly string[]): string {
+  return shellArguments(wheelPaths.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`))
 }
 
 function wheelSetDigest(wheelHashes: HashesByPath): string {
@@ -66,11 +74,24 @@ async function venvHasWheels(ssh: SshSession, wheelDigest: string): Promise<bool
   return installedDigest.trim() === wheelDigest
 }
 
-// pip runs only when the venv does not already hold these exact wheels, whichever way the files were
-// sent. The marker is written only after pip succeeds, so a pip run cut short is run again next time.
+// The marker tells which wheels pip last installed, not that their files are still whole: a file can be
+// lost or changed since. Only the packages whose files no longer match their RECORD are installed again;
+// plain pip would skip them, as their version is already there. The marker stays, so a repair cut short
+// is found and run again next time.
+async function repairBrokenWheels(ssh: SshSession, ctx: EnrollContext, wheelPaths: readonly string[]): Promise<void> {
+  const repair = venvRepair(wheelPaths, parseRecordCheck(await ssh.exec(recordCheckCommand(VENV))))
+  if (repair.wheelPaths.length === 0) return
+  ctx.onProgress?.('Repairing damaged daemon packages in venv…')
+  if (repair.unrecordedDistInfos.length > 0) await ssh.exec(`rm -rf ${shellArguments(repair.unrecordedDistInfos)}`)
+  await ssh.exec(`${PIP_INSTALL_FROM_FILES} --force-reinstall ${payloadWheelFiles(repair.wheelPaths)}`)
+}
+
+// The whole wheel set is installed when the venv does not already hold these exact wheels, whichever way
+// the files were sent. The marker is written only after pip succeeds, so a pip run cut short is run again
+// next time.
 export async function syncVenvDeps(ssh: SshSession, ctx: EnrollContext, wheelHashes: HashesByPath): Promise<void> {
   const wheelDigest = wheelSetDigest(wheelHashes)
-  if (await venvHasWheels(ssh, wheelDigest)) return
+  if (await venvHasWheels(ssh, wheelDigest)) return repairBrokenWheels(ssh, ctx, [...wheelHashes.keys()])
   await installVenvDeps(ssh, ctx, [...wheelHashes.keys()])
   await ssh.exec(`printf %s ${wheelDigest} > ${WHEEL_MARKER}`)
 }

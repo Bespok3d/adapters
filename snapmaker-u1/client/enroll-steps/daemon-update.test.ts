@@ -28,7 +28,7 @@ import type { PackageRelease } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import type { FakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE } from '../packages'
-import { DAEMON_BASE } from '../paths'
+import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { sha256Of } from '../payload-hashes'
 
 // The daemon's autostart script travels on its own, to the autostart directory; the rest goes in the stream.
@@ -187,5 +187,55 @@ describe('stepRefreshDaemonVenv', () => {
 
     expect(printer.commands).toHaveLength(1)
     expect(printer.files.size).toBe(0)
+  })
+})
+
+// The marker says which wheels pip installed, the files say whether they are still whole: a package that
+// lost or changed a file is installed again, and only that one.
+describe('stepRefreshDaemonVenv on a venv whose files changed', () => {
+  const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+  const FASTAPI_WHEEL = `${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl`
+  const FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.115.0.dist-info`
+  const FASTAPI_REINSTALL = `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${FASTAPI_WHEEL}'`
+
+  async function refreshedPrinter(): Promise<FakePrinter> {
+    const printer = await enrolledPrinter()
+    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+    printer.commands.length = 0
+
+    return printer
+  }
+
+  it('installs again only the package whose files no longer match its RECORD', async () => {
+    const printer = await refreshedPrinter()
+    printer.venvPackages.set(FASTAPI_DIST_INFO, 'damaged')
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([FASTAPI_REINSTALL])
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)).toBe('intact')
+  })
+
+  it('installs again a package gone from the venv', async () => {
+    const printer = await refreshedPrinter()
+    printer.venvPackages.delete(FASTAPI_DIST_INFO)
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(pipRuns(printer)).toEqual([FASTAPI_REINSTALL])
+  })
+
+  // pip will not uninstall a package with no RECORD, so its dist-info dir is cleared before pip runs.
+  it('clears a package whose RECORD is gone, then installs it again', async () => {
+    const printer = await refreshedPrinter()
+    printer.venvPackages.set(FASTAPI_DIST_INFO, 'unrecorded')
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    const clearAt = printer.commands.indexOf(`rm -rf '${FASTAPI_DIST_INFO}'`)
+    expect(clearAt).toBeGreaterThanOrEqual(0)
+    expect(printer.commands.indexOf(FASTAPI_REINSTALL)).toBeGreaterThan(clearAt)
+    expect(printer.venvPackages.get(FASTAPI_DIST_INFO)).toBe('intact')
   })
 })

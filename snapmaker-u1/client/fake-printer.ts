@@ -5,12 +5,16 @@
 // does. A test sees what landed, not which commands were typed, so the same assertions hold for any
 // way of getting it there.
 import { createHash } from 'crypto'
+import { posix } from 'path'
 import type { Readable } from 'stream'
 
 import type { SshSession } from '@adapter-sdk'
 
+import type { DistributionState } from './venv-record'
+
 const TAR_BLOCK = 512
 const QUOTED_PATH = /'([^']*)'/g
+const VENV_SITE_PACKAGES = 'lib/python3.11/site-packages'
 
 export interface FakePrinter {
   ssh: SshSession
@@ -26,16 +30,18 @@ export interface FakePrinter {
   connectionLost: boolean
   // The next command matching this fails on the printer, while the connection stays up.
   failingCommand: RegExp | null
+  // The packages pip put in the venv, by dist-info dir, with what a check against their RECORD finds.
+  venvPackages: Map<string, DistributionState>
 }
 
 function quotedPaths(command: string): string[] {
   return [...command.matchAll(QUOTED_PATH)].map((match) => match[1])
 }
 
-function removeTree(files: Map<string, Buffer>, removedPath: string): void {
-  [...files.keys()]
-    .filter((filePath) => filePath === removedPath || filePath.startsWith(`${removedPath}/`))
-    .forEach((filePath) => files.delete(filePath))
+function removeTree(entries: Map<string, unknown>, removedPath: string): void {
+  [...entries.keys()]
+    .filter((entryPath) => entryPath === removedPath || entryPath.startsWith(`${removedPath}/`))
+    .forEach((entryPath) => entries.delete(entryPath))
 }
 
 function tarField(header: Buffer, offset: number, size: number): string {
@@ -84,12 +90,34 @@ function fileCheckOrCopy(files: Map<string, Buffer>, command: string): string {
   return ''
 }
 
-function answer(files: Map<string, Buffer>, command: string): string {
+// pip installs each wheel file named as `<name>-<version>.dist-info` in the venv's site-packages, whole.
+function pipInstall(venvPackages: Map<string, DistributionState>, command: string): void {
+  const venvDir = command.split('/bin/pip ')[0]
+  quotedPaths(command)
+    .map((wheelPath) => posix.basename(wheelPath).split('-').slice(0, 2).join('-'))
+    .forEach((nameVersion) => venvPackages.set(`${venvDir}/${VENV_SITE_PACKAGES}/${nameVersion}.dist-info`, 'intact'))
+}
+
+function recordCheckOf(venvPackages: Map<string, DistributionState>): string {
+  return [...venvPackages].map(([distInfoPath, state]) => `${state}\t${distInfoPath}\n`).join('')
+}
+
+function removePaths(printer: FakePrinter, command: string): void {
+  removedPathsOf(command).forEach((removedPath) => {
+    removeTree(printer.files, removedPath)
+    removeTree(printer.venvPackages, removedPath)
+  })
+}
+
+function answer(printer: FakePrinter, command: string): string {
+  const { files } = printer
   if (command.includes('sha256sum')) return hashListOf(files, command)
   if (/^(test -f|cp) /.test(command)) return fileCheckOrCopy(files, command)
   if (command.startsWith('test -x')) return 'yes'
   if (command.startsWith('cat ')) return files.get(command.split(' ')[1])?.toString('utf-8') ?? ''
-  if (command.startsWith('rm -')) removedPathsOf(command).forEach((removedPath) => removeTree(files, removedPath))
+  if (command.includes(' -I -c ')) return recordCheckOf(printer.venvPackages)
+  if (command.includes('/bin/pip install ')) pipInstall(printer.venvPackages, command)
+  if (command.startsWith('rm -')) removePaths(printer, command)
   const marker = /^printf %s (\S+) > (\S+)$/.exec(command)
   if (marker) files.set(marker[2], Buffer.from(marker[1]))
 
@@ -131,13 +159,14 @@ export function fakePrinter(startingFiles: Record<string, string> = {}): FakePri
     cutPoint: null,
     connectionLost: false,
     failingCommand: null,
+    venvPackages: new Map(),
     ssh: {} as SshSession,
   }
   printer.ssh = {
     exec: async (command: string) => {
       receive(printer, command)
 
-      return answer(printer.files, command)
+      return answer(printer, command)
     },
     execWithInput: async (command: string, input: Readable) => {
       receive(printer, command)
