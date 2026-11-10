@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Whether the packages in the daemon's venv still hold the files pip wrote, judged on the printer
-// against each package's RECORD, whether each was installed from the payload wheel of its name, and
-// which payload wheels that leaves to install again.
+// against each package's RECORD, whether each was installed from the payload wheel of its name, whether
+// the venv's own pip is whole, and which payload wheels that leaves to install again.
 import { posix } from 'path'
 
 import { shellQuote } from '@adapter-sdk'
@@ -29,6 +29,7 @@ export interface RecordCheck {
 const CHECK_LINE_KINDS = ['installed', 'wheel'] as const
 type CheckLineKind = typeof CHECK_LINE_KINDS[number]
 
+const PIP_PROJECT = 'pip'
 const NO_FINGERPRINT = '-'
 const RECORD_FINGERPRINT = /^([0-9a-f]{64}|-)$/
 
@@ -129,6 +130,14 @@ function unrecordedOfProjects(brokenWheels: readonly string[], installed: readon
   return installed
     .filter((distribution) => distribution.state === 'unrecorded' && brokenProjects.has(projectName(distInfoStem(distribution))))
     .map((distribution) => distribution.distInfoPath)
+}
+
+// pip installs every other package, so a pip that still starts with a file lost or changed cannot be
+// trusted with them. A venv with no record of pip at all is no better.
+export function pipIsWhole(check: RecordCheck): boolean {
+  const pipDistributions = check.installed.filter((distribution) => projectName(distInfoStem(distribution)) === PIP_PROJECT)
+
+  return pipDistributions.length > 0 && pipDistributions.every((distribution) => distribution.state === 'intact')
 }
 
 export function venvRepair(wheelPaths: readonly string[], check: RecordCheck): VenvRepair {

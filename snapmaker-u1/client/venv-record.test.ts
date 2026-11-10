@@ -3,14 +3,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 // The SDK's shell quoting and nothing else: the real loader drags electron in behind it.
 vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
 
-import { parseRecordCheck, recordCheckCommand, venvRepair } from './venv-record'
+import { parseRecordCheck, pipIsWhole, recordCheckCommand, venvRepair } from './venv-record'
 import type { InstalledDistribution, RecordCheck } from './venv-record'
 
 const SITE_PACKAGES = '/venv.example/lib/python3.11/site-packages'
@@ -96,7 +96,29 @@ describe('venvRepair', () => {
   })
 })
 
+describe('pipIsWhole', () => {
+  const FASTAPI_INTACT = installed('intact', 'fastapi-0.115.0.dist-info')
+
+  it('trusts a pip whose files are all as pip wrote them', () => {
+    expect(pipIsWhole(checkOf([], [FASTAPI_INTACT, installed('intact', 'pip-24.0.dist-info')]))).toBe(true)
+  })
+
+  it('does not trust a pip that lost or changed a file, or lost its RECORD', () => {
+    expect(pipIsWhole(checkOf([], [FASTAPI_INTACT, installed('damaged', 'pip-24.0.dist-info')]))).toBe(false)
+    expect(pipIsWhole(checkOf([], [FASTAPI_INTACT, installed('unrecorded', 'pip-24.0.dist-info', null)]))).toBe(false)
+    expect(pipIsWhole(checkOf([], [installed('intact', 'pip-24.0.dist-info'), installed('unrecorded', 'pip-23.3.dist-info', null)]))).toBe(false)
+  })
+
+  it('does not trust a venv with no record of pip at all', () => {
+    expect(pipIsWhole(checkOf([], [FASTAPI_INTACT]))).toBe(false)
+  })
+})
+
 const venvDirs: string[] = []
+
+function removeCreatedVenvs(): void {
+  venvDirs.splice(0).forEach((venvDir) => rmSync(venvDir, { recursive: true, force: true }))
+}
 
 function recordHash(fileContent: string): string {
   return `sha256=${createHash('sha256').update(fileContent).digest('base64url')}`
@@ -148,9 +170,7 @@ function installOneRowPackage(sitePackages: string, nameVersion: string, digestF
 
 // The check script runs for real, under a venv's own python, over packages laid out the way pip lays them.
 describe('recordCheckCommand on a real venv', () => {
-  afterEach(() => {
-    venvDirs.splice(0).forEach((venvDir) => rmSync(venvDir, { recursive: true, force: true }))
-  })
+  afterEach(removeCreatedVenvs)
 
   it('finds each package whole, damaged, or without a readable RECORD', () => {
     const { venvDir, sitePackages } = createdVenv(['--without-pip'])
@@ -233,9 +253,7 @@ const REAL_PIP_TIMEOUT_MS = 120_000
 
 // The real pip installs a real wheel, so the check is proven against the RECORD pip itself writes.
 describe('recordCheckCommand against what pip installed', () => {
-  afterEach(() => {
-    venvDirs.splice(0).forEach((venvDir) => rmSync(venvDir, { recursive: true, force: true }))
-  })
+  afterEach(removeCreatedVenvs)
 
   it('tells the wheel a package came from apart from one rebuilt at the same version', () => {
     const { venvDir } = createdVenv([])
@@ -270,5 +288,14 @@ describe('recordCheckCommand against what pip installed', () => {
     expect(demoFingerprint(check)).toBe(check.wheelFingerprints.get(editedWheel))
     expect(venvRepair([editedWheel], check).wheelPaths).toEqual([])
     expect(venvRepair([payloadWheel], check).wheelPaths).toEqual([payloadWheel])
+  }, REAL_PIP_TIMEOUT_MS)
+
+  it('finds the pip python3 -m venv put in place whole once it has installed a wheel, and not once one of its files changed', () => {
+    const { venvDir, sitePackages } = createdVenv([])
+    pipInstallFromFile(venvDir, [], builtWheel(demoWheelFiles('module source', 'extra module')))
+    const pipBefore = pipIsWhole(venvCheck(venvDir, []))
+    appendFileSync(join(sitePackages, 'pip/__init__.py'), '\n# changed on the printer\n')
+
+    expect([pipBefore, pipIsWhole(venvCheck(venvDir, []))]).toEqual([true, false])
   }, REAL_PIP_TIMEOUT_MS)
 })

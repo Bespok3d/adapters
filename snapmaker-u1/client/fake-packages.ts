@@ -28,21 +28,25 @@ export function packagedContent(packageName: string, payloadPath: string): strin
   return `from ${packageName}: ${payloadPath}`
 }
 
-// A release is the shipped payload with some files edited (`edited`) and some left out (`dropped`).
+// A release is the shipped payload with some files edited (`edited`), some left out (`dropped`), and
+// some new ones (`added`).
 export interface PackageRelease {
   edited?: Record<string, string>
   dropped?: readonly string[]
+  added?: Record<string, string>
 }
 
 export function fakePackage(packageName: string, release: PackageRelease = {}): BundledPackage {
-  const payloadPaths = (PAYLOADS[packageName] ?? []).filter((payloadPath) => !release.dropped?.includes(payloadPath))
-  if (payloadPaths.length === 0) throw new Error(`unexpected package ${packageName}`)
+  const shippedPayload = PAYLOADS[packageName]
+  if (shippedPayload === undefined) throw new Error(`unexpected package ${packageName}`)
+  const shippedPaths = shippedPayload.filter((payloadPath) => !release.dropped?.includes(payloadPath))
+  const payloadPaths = [...shippedPaths, ...Object.keys(release.added ?? {})]
 
   return {
     name: packageName,
     version: '0.0.0',
     trust: 'unknown',
     payloadPaths,
-    payloadBytes: (payloadPath: string) => Buffer.from(release.edited?.[payloadPath] ?? packagedContent(packageName, payloadPath)),
+    payloadBytes: (payloadPath: string) => Buffer.from(release.edited?.[payloadPath] ?? release.added?.[payloadPath] ?? packagedContent(packageName, payloadPath)),
   }
 }

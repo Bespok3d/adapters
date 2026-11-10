@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, it, expect, vi } from 'vitest'
 import { createHash } from 'node:crypto'
+import { posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { BundledPackage, EnrollContext } from '@adapter-sdk'
@@ -61,6 +62,10 @@ function pipRuns(printer: FakePrinter): string[] {
 
 function wheelFingerprint(wheelContent: string): string {
   return createHash('sha256').update(wheelContent).digest('hex')
+}
+
+function venvStates(printer: FakePrinter): Record<string, DistributionState> {
+  return Object.fromEntries([...printer.venvPackages].map(([distInfoPath, venvPackage]) => [posix.basename(distInfoPath), venvPackage.state]))
 }
 
 function markPackage(printer: FakePrinter, distInfoPath: string, state: DistributionState): void {
@@ -125,6 +130,18 @@ describe('stepDeployDaemon as an update', () => {
   })
 })
 
+describe('stepDeployDaemon as an update that only drops a file', () => {
+  it('removes the file the package dropped when no file changed', async () => {
+    const printer = await enrolledPrinter()
+    releaseDaemon({ dropped: ['core/legacy.py'] })
+
+    await stepDeployDaemon(printer.ssh, updateEnroll)
+
+    expect(printer.streams).toEqual([])
+    expect(printer.files.has(`${DAEMON_BASE}/core/legacy.py`)).toBe(false)
+  })
+})
+
 // A connection lost part way through leaves the printer in a state the same update finishes.
 describe('stepDeployDaemon as an update cut off part way', () => {
   const release = { edited: { 'core/state.py': 'state, edited', 'wheels/fastapi-0.115.0-py3-none-any.whl': 'a newer wheel' }, dropped: ['core/legacy.py'] }
@@ -148,7 +165,7 @@ describe('stepDeployDaemon as an update cut off part way', () => {
   }
 
   it('is put right by running it again when cut after the stream', async () => {
-    const printer = await cutThenRerun(/^rm -f /)
+    const printer = await cutThenRerun(/^chmod /)
 
     expectReleaseInPlace(printer)
   })
@@ -160,14 +177,61 @@ describe('stepDeployDaemon as an update cut off part way', () => {
   })
 })
 
+// An update that swaps a wheel for another version and is cut short never leaves both on the printer,
+// so the venv refreshes after it settle and stay settled. The old wheel goes in the same command that
+// copies the new one, so a cut lands before both or after both.
+describe('stepDeployDaemon swapping a wheel, cut off part way', () => {
+  const NEXT_FASTAPI_WHEEL = 'wheels/fastapi-0.116.0-py3-none-any.whl'
+  const wheelSwap = { dropped: ['wheels/fastapi-0.115.0-py3-none-any.whl'], added: { [NEXT_FASTAPI_WHEEL]: 'the next fastapi' } }
+
+  function fastapiWheelsOn(printer: FakePrinter): string[] {
+    return [...printer.files.keys()].filter((filePath) => filePath.startsWith(`${DAEMON_BASE}/wheels/fastapi-`))
+  }
+
+  // The fake printer cannot cut a command half run; ignoring HUP is what keeps a real one from it.
+  it('removes the old wheel in the command that copies the new one, which a lost connection does not stop', async () => {
+    const printer = await enrolledPrinter()
+    releaseDaemon(wheelSwap)
+
+    await stepDeployDaemon(printer.ssh, updateEnroll)
+
+    expect(printer.commands).toContainEqual(expect.stringMatching(/^trap '' HUP; .* && cp -a .* && rm -f '[^']*fastapi-0\.115\.0[^']*' && rm -rf /))
+  })
+
+  it.each([
+    [/rm -f '[^']*fastapi-0\.115\.0/],
+    [/^chmod /],
+    [/pip install/],
+  ])('leaves no two wheels for venv refreshes to swap, when cut at %s', async (cutPoint) => {
+    const printer = await enrolledPrinter()
+    releaseDaemon(wheelSwap)
+    printer.cutPoint = cutPoint
+    await expect(stepDeployDaemon(printer.ssh, updateEnroll)).rejects.toThrow('connection lost')
+    printer.connectionLost = false
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+    printer.commands.length = 0
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(fastapiWheelsOn(printer)).toHaveLength(1)
+    expect(pipRuns(printer)).toEqual([])
+  })
+})
+
+const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+
+async function printerWithNewerWheel(): Promise<FakePrinter> {
+  const printer = await enrolledPrinter()
+  printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+
+  return printer
+}
+
 // The app keeps a daemon newer than the one it ships, so the daemon step does not run, and the venv is
 // brought up to the wheels that daemon left on the printer.
 describe('stepRefreshDaemonVenv', () => {
-  const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
-
   it('installs the wheels the kept daemon brought when the venv does not hold them', async () => {
-    const printer = await enrolledPrinter()
-    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+    const printer = await printerWithNewerWheel()
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
@@ -178,8 +242,7 @@ describe('stepRefreshDaemonVenv', () => {
   })
 
   it('runs no pip on the next refresh, the venv now holding those wheels whole', async () => {
-    const printer = await enrolledPrinter()
-    printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+    const printer = await printerWithNewerWheel()
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
@@ -205,14 +268,15 @@ describe('stepRefreshDaemonVenv', () => {
   })
 })
 
-const NEWER_WHEEL = `${DAEMON_BASE}/wheels/uvicorn-0.32.0-py3-none-any.whl`
+const PIP_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/pip-24.0.dist-info`
+const VENV_REMAKE = `rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`
+const REFRESHED_VENV_WHOLE = { 'fastapi-0.115.0.dist-info': 'intact', 'pip-24.0.dist-info': 'intact', 'uvicorn-0.32.0.dist-info': 'intact' }
 const ADDED_WHEEL = `${DAEMON_BASE}/wheels/starlette-0.38.0-py3-none-any.whl`
 const OLDER_FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.114.0.dist-info`
 const FASTAPI_REINSTALL = `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${FASTAPI_WHEEL}'`
 
 async function refreshedPrinter(): Promise<FakePrinter> {
-  const printer = await enrolledPrinter()
-  printer.files.set(NEWER_WHEEL, Buffer.from('a wheel the newer daemon brought'))
+  const printer = await printerWithNewerWheel()
   await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
   printer.commands.length = 0
 
@@ -255,6 +319,12 @@ describe('stepRefreshDaemonVenv on a venv whose files changed', () => {
   })
 })
 
+function expectVenvMadeAgainWhole(printer: FakePrinter): void {
+  expect(printer.commands).toContain(VENV_REMAKE)
+  expect(pipRuns(printer)).toHaveLength(1)
+  expect(venvStates(printer)).toEqual(REFRESHED_VENV_WHOLE)
+}
+
 // The check runs on the venv's own python, so a venv whose python fails is made again, then filled.
 describe('stepRefreshDaemonVenv on a venv whose python does not run', () => {
   it('makes the venv again and installs every wheel into it', async () => {
@@ -263,9 +333,61 @@ describe('stepRefreshDaemonVenv on a venv whose python does not run', () => {
 
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
-    expect(printer.commands).toContain(`rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`)
-    expect(pipRuns(printer)).toHaveLength(1)
-    expect([...printer.venvPackages.values()].map((venvPackage) => venvPackage.state)).toEqual(['intact', 'intact'])
+    expectVenvMadeAgainWhole(printer)
+  })
+})
+
+function venvChecks(printer: FakePrinter): string[] {
+  return printer.commands.filter((command) => command.endsWith(' || echo venv-check-crashed'))
+}
+
+// A python that passes the probe and then crashes inside the check gets the venv made again, once.
+describe('stepRefreshDaemonVenv on a venv whose python crashes inside the check', () => {
+  it('makes the venv again once and installs every wheel into it, without checking it again', async () => {
+    const printer = await refreshedPrinter()
+    printer.venvCheckCrashes = true
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
+    expect(venvChecks(printer)).toHaveLength(1)
+    expect(pipRuns(printer)).toEqual([`${FASTAPI_REINSTALL} '${NEWER_WHEEL}'`])
+    expect(venvStates(printer)).toEqual(REFRESHED_VENV_WHOLE)
+  })
+})
+
+// pip installs every other package, so a pip that still starts with its own files damaged is not trusted.
+describe('stepRefreshDaemonVenv on a venv whose pip lost or changed a file', () => {
+  it('makes the venv again and installs every wheel into it', async () => {
+    const printer = await refreshedPrinter()
+    markPackage(printer, PIP_DIST_INFO, 'damaged')
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expectVenvMadeAgainWhole(printer)
+  })
+})
+
+// An earlier release kept the list of the wheels pip last installed in the venv. Nothing reads it now.
+describe('the wheel list an earlier release kept in the venv', () => {
+  const LEGACY_WHEEL_MARKER = `${BESPOK3D}/venv/.bespok3d-wheels`
+
+  it('is removed by an update', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(LEGACY_WHEEL_MARKER, Buffer.from('an old wheel list'))
+
+    await stepDeployDaemon(printer.ssh, updateEnroll)
+
+    expect(printer.files.has(LEGACY_WHEEL_MARKER)).toBe(false)
+  })
+
+  it('is removed by a venv refresh', async () => {
+    const printer = await enrolledPrinter()
+    printer.files.set(LEGACY_WHEEL_MARKER, Buffer.from('an old wheel list'))
+
+    await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
+
+    expect(printer.files.has(LEGACY_WHEEL_MARKER)).toBe(false)
   })
 })
 
@@ -289,7 +411,7 @@ describe('stepRefreshDaemonVenv on wheels that changed', () => {
     await stepRefreshDaemonVenv(printer.ssh, {} as EnrollContext)
 
     expect(pipRuns(printer)).toHaveLength(1)
-    expect([...printer.venvPackages.values()].map((venvPackage) => venvPackage.state)).toEqual(['intact', 'intact', 'intact'])
+    expect(venvStates(printer)).toEqual({ ...REFRESHED_VENV_WHOLE, 'starlette-0.38.0.dist-info': 'intact' })
   })
 
   // pip uninstalls the version it replaces, and refuses to when that one has no RECORD.

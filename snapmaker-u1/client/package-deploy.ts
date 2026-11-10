@@ -54,18 +54,39 @@ function ownedEntries(files: readonly PayloadFile[]): string[] {
   return topLevelEntries(files.map((file) => file.payloadPath))
 }
 
+// What an apply removes around the copy. A full send clears every entry the packages own just before it,
+// so a file a package dropped goes with them; an update removes the files the package dropped just after it.
+interface TreeCleanup {
+  entriesToClear: readonly string[]
+  droppedPaths: readonly string[]
+}
+
+function fullSendCleanup(files: readonly PayloadFile[]): TreeCleanup {
+  return { entriesToClear: ownedEntries(files), droppedPaths: [] }
+}
+
+function droppedRemovalCommand(sync: PayloadSync, droppedPaths: readonly string[]): string {
+  return `rm -f ${shellArguments(droppedPaths.map((droppedPath) => `${sync.remoteBase}/${droppedPath}`))}`
+}
+
+function droppedRemoval(sync: PayloadSync, droppedPaths: readonly string[]): string {
+  if (droppedPaths.length === 0) return ''
+
+  return `${droppedRemovalCommand(sync, droppedPaths)} && `
+}
+
 // The stream lands in a staging directory first and reaches the live tree only once every file arrived,
 // so a stream cut by the network leaves the daemon that was there whole. HUP is ignored so a connection
-// lost after that point cannot stop the copy half way. A full send clears what the packages own just
-// before the copy, so a file the package dropped goes with it.
-function applyCommand(sync: PayloadSync, fileCount: number, entriesToClear: readonly string[]): string {
+// lost after that point cannot stop the copy or the removal half way: a file the update replaced with
+// another of a new name never stays beside it, where the venv refresh would swap between the two.
+function applyCommand(sync: PayloadSync, fileCount: number, cleanup: TreeCleanup): string {
   const base = shellQuote(sync.remoteBase)
   const staging = shellQuote(`${sync.remoteBase}/.incoming`)
-  const clearOwned = entriesToClear.map((entry) => `rm -rf ${shellQuote(`${sync.remoteBase}/${entry}`)} && `).join('')
+  const clearOwned = cleanup.entriesToClear.map((entry) => `rm -rf ${shellQuote(`${sync.remoteBase}/${entry}`)} && `).join('')
 
   return `trap '' HUP; rm -rf ${staging} && mkdir -p ${staging} && tar xf - -C ${staging} && ` +
     `test "$(find ${staging} -type f | wc -l)" -eq ${fileCount} && ` +
-    `${clearOwned}cp -a ${staging}/. ${base}/ && rm -rf ${staging}`
+    `${clearOwned}cp -a ${staging}/. ${base}/ && ${droppedRemoval(sync, cleanup.droppedPaths)}rm -rf ${staging}`
 }
 
 // The bar advances as each file is pulled into the stream, so the count beside it is what moved it.
@@ -80,33 +101,33 @@ function* tarStreamFrom(sync: PayloadSync, files: readonly PayloadFile[], index:
   yield* tarStreamFrom(sync, files, index + 1, sentAt)
 }
 
-async function sendFiles(sync: PayloadSync, files: readonly PayloadFile[], entriesToClear: readonly string[]): Promise<void> {
+async function sendFiles(sync: PayloadSync, files: readonly PayloadFile[], cleanup: TreeCleanup): Promise<void> {
   const sentAt = Math.floor(Date.now() / 1000)
   const tarStream = Readable.from(tarStreamFrom(sync, files, 0, sentAt))
 
-  await sync.ssh.execWithInput(applyCommand(sync, files.length, entriesToClear), tarStream)
-}
-
-async function sendChangedFiles(sync: PayloadSync, changedFiles: readonly PayloadFile[]): Promise<void> {
-  if (changedFiles.length > 0) return sendFiles(sync, changedFiles, [])
-
-  sync.onProgress?.('The printer already has these files', spanFraction(sync.progressSpan, 1))
+  await sync.ssh.execWithInput(applyCommand(sync, files.length, cleanup), tarStream)
 }
 
 async function removeDropped(sync: PayloadSync, droppedPaths: readonly string[]): Promise<void> {
   if (droppedPaths.length === 0) return
 
-  await sync.ssh.exec(`rm -f ${shellArguments(droppedPaths.map((droppedPath) => `${sync.remoteBase}/${droppedPath}`))}`)
+  await sync.ssh.exec(droppedRemovalCommand(sync, droppedPaths))
 }
 
-// Removal comes after the copy, so an update cut off at any point leaves either the old tree or the new
-// files beside a few stale ones, and running it again finishes the job.
+// With nothing to send, the dropped files go on their own: a cut then leaves only files the printer
+// already held, and running the update again removes them.
+async function sendChangedFiles(sync: PayloadSync, changedFiles: readonly PayloadFile[], droppedPaths: readonly string[]): Promise<void> {
+  if (changedFiles.length > 0) return sendFiles(sync, changedFiles, { entriesToClear: [], droppedPaths })
+
+  sync.onProgress?.('The printer already has these files', spanFraction(sync.progressSpan, 1))
+  await removeDropped(sync, droppedPaths)
+}
+
 async function sendChanges(sync: PayloadSync, files: readonly PayloadFile[]): Promise<void> {
   sync.onProgress?.('Comparing files with the printer…', spanFraction(sync.progressSpan, 0))
   const printerHashes = parseHashList(await sync.ssh.exec(remoteHashCommand(sync.remoteBase, ownedEntries(files))))
   const changes = payloadChanges(packageHashes(files), printerHashes)
-  await sendChangedFiles(sync, files.filter((file) => changes.changed.includes(file.payloadPath)))
-  await removeDropped(sync, changes.dropped)
+  await sendChangedFiles(sync, files.filter((file) => changes.changed.includes(file.payloadPath)), changes.dropped)
 }
 
 // A hash list or an update stream that fails is not trusted to say what the printer holds, so the
@@ -116,7 +137,7 @@ async function sendChangesOrEverything(sync: PayloadSync, files: readonly Payloa
     await sendChanges(sync, files)
   } catch (updateFailure) {
     sync.onProgress?.(`Update stream failed (${String(updateFailure)}); sending every file…`, spanFraction(sync.progressSpan, 0))
-    await sendFiles(sync, files, ownedEntries(files))
+    await sendFiles(sync, files, fullSendCleanup(files))
   }
 }
 
@@ -124,5 +145,5 @@ export async function syncPayload(sync: PayloadSync): Promise<void> {
   const files = payloadFiles(sync.sources)
   if (sync.sendChangedFilesOnly) return sendChangesOrEverything(sync, files)
 
-  return sendFiles(sync, files, ownedEntries(files))
+  return sendFiles(sync, files, fullSendCleanup(files))
 }

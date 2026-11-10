@@ -15,6 +15,8 @@ import type { DistributionState } from './venv-record'
 const TAR_BLOCK = 512
 const QUOTED_PATH = /'([^']*)'/g
 const VENV_SITE_PACKAGES = 'lib/python3.11/site-packages'
+// The pip that python3 -m venv puts in every venv it makes.
+const BUNDLED_PIP_DIST_INFO = 'pip-24.0.dist-info'
 
 export interface FakePrinter {
   ssh: SshSession
@@ -35,6 +37,8 @@ export interface FakePrinter {
   venvPackages: Map<string, VenvPackage>
   // The venv's python no longer runs, until the venv is made again.
   venvPythonBroken: boolean
+  // The venv's python passes the probe but crashes inside the check, until the venv is made again.
+  venvCheckCrashes: boolean
 }
 
 export interface VenvPackage {
@@ -138,9 +142,25 @@ function wheelLine(files: Map<string, Buffer>, wheelPath: string): string {
   return `wheel\t${wheelBytes ? sha256Hex(wheelBytes) : '-'}\t${wheelPath}\n`
 }
 
+// The probe runs the venv's python and the venv's pip, and pip starts while its dist-info is there,
+// whole or not.
+function venvProbeAnswer(printer: FakePrinter): string {
+  const venvRuns = !printer.venvPythonBroken && projectDistInfos(printer.venvPackages, 'pip').length > 0
+
+  return venvRuns ? 'yes' : 'no'
+}
+
+// A check whose python crashes fails the command, so the shell's fallback echo answers, when it has one.
+function crashedCheck(command: string): string {
+  const fallbackEcho = / \|\| echo (\S+)$/.exec(command)
+  if (!fallbackEcho) throw new Error('command failed')
+
+  return fallbackEcho[1]
+}
+
 // The check is quoted as the venv's python, the script, then the wheel paths.
 function recordCheckOf(printer: FakePrinter, command: string): string {
-  if (printer.venvPythonBroken) throw new Error('command failed')
+  if (printer.venvPythonBroken || printer.venvCheckCrashes) return crashedCheck(command)
   const wheelPaths = quotedPaths(command).slice(2)
 
   return [...[...printer.venvPackages].map(installedLine), ...wheelPaths.map((wheelPath) => wheelLine(printer.files, wheelPath))].join('')
@@ -156,7 +176,9 @@ function removePaths(printer: FakePrinter, command: string): void {
 function remakeVenv(printer: FakePrinter, venvDir: string): string {
   removeTree(printer.files, venvDir)
   removeTree(printer.venvPackages, venvDir)
+  printer.venvPackages.set(`${venvDir}/${VENV_SITE_PACKAGES}/${BUNDLED_PIP_DIST_INFO}`, { state: 'intact', recordFingerprint: sha256Hex(Buffer.from(BUNDLED_PIP_DIST_INFO)) })
   printer.venvPythonBroken = false
+  printer.venvCheckCrashes = false
 
   return ''
 }
@@ -167,7 +189,7 @@ function answer(printer: FakePrinter, command: string): string {
   if (venvRemade) return remakeVenv(printer, venvRemade[1])
   if (command.includes('sha256sum')) return hashListOf(files, command)
   if (/^(test -f|cp) /.test(command)) return fileCheckOrCopy(files, command)
-  if (/\/bin\/python3 -I -c .* && echo yes \|\| echo no$/.test(command)) return printer.venvPythonBroken ? 'no' : 'yes'
+  if (/\/bin\/python3 -I -c .* && echo yes \|\| echo no$/.test(command)) return venvProbeAnswer(printer)
   if (command.includes(' -I -c ')) return recordCheckOf(printer, command)
   if (command.includes('/bin/pip install ')) pipInstall(printer, command)
   if (command.startsWith('rm -')) removePaths(printer, command)
@@ -175,7 +197,14 @@ function answer(printer: FakePrinter, command: string): string {
   return ''
 }
 
-// The apply command clears what a full send replaces, then copies the staged files into the base.
+function droppedPathsOf(command: string): string[] {
+  const droppedRemoval = /&& rm -f ((?:'[^']*' ?)+)&&/.exec(command)?.[1] ?? ''
+
+  return quotedPaths(droppedRemoval)
+}
+
+// The apply command clears what a full send replaces, copies the staged files into the base, then
+// removes what an update dropped.
 async function applyStream(printer: FakePrinter, command: string, input: Readable): Promise<string> {
   const archive = Buffer.concat(await input.toArray())
   const remoteBase = /cp -a '[^']*'\/\. '([^']*)'\//.exec(command)?.[1] ?? ''
@@ -183,6 +212,7 @@ async function applyStream(printer: FakePrinter, command: string, input: Readabl
   cleared.forEach((clearedPath) => removeTree(printer.files, clearedPath))
   const landed = tarEntries(archive, 0)
   landed.forEach(([payloadPath, fileBytes]) => printer.files.set(`${remoteBase}/${payloadPath}`, Buffer.from(fileBytes)))
+  droppedPathsOf(command).forEach((droppedPath) => printer.files.delete(droppedPath))
   printer.streams.push(landed.map(([payloadPath]) => payloadPath))
 
   return ''
@@ -212,6 +242,7 @@ export function fakePrinter(startingFiles: Record<string, string> = {}): FakePri
     failingCommand: null,
     venvPackages: new Map(),
     venvPythonBroken: false,
+    venvCheckCrashes: false,
     ssh: {} as SshSession,
   }
   printer.ssh = {

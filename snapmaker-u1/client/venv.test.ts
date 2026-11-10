@@ -44,8 +44,13 @@ const PAYLOAD_WHEELS = [
   'wheels/fastapi-0.115.0-py3-none-any.whl',
   'wheels/starlette-0.38.0-py3-none-any.whl',
 ]
+const REMOTE_PAYLOAD_WHEELS = PAYLOAD_WHEELS.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`)
 const FASTAPI_FINGERPRINT = 'a'.repeat(64)
+const PIP_IN_PLACE = `installed\tintact\t${'c'.repeat(64)}\t${BESPOK3D}/venv/lib/python3.11/site-packages/pip-24.0.dist-info`
+const PIP_DAMAGED = PIP_IN_PLACE.replace('\tintact\t', '\tdamaged\t')
+const VENV_REMAKE = `rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`
 const FASTAPI_IN_PLACE = [
+  PIP_IN_PLACE,
   `installed\tintact\t${FASTAPI_FINGERPRINT}\t${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.115.0.dist-info`,
   `wheel\t${FASTAPI_FINGERPRINT}\t${DAEMON_BASE}/${PAYLOAD_WHEELS[0]}`,
   `wheel\t${'b'.repeat(64)}\t${DAEMON_BASE}/${PAYLOAD_WHEELS[1]}`,
@@ -67,7 +72,7 @@ describe('syncVenvDeps', () => {
   // read from no longer exists. Uploading a wheel here again would fail every enrollment on a machine
   // that has only the released daemon.
   it('uploads no wheel to the printer: the verified package already put them there', async () => {
-    const enroll = recordingSession('')
+    const enroll = recordingSession(PIP_IN_PLACE)
 
     await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
@@ -76,12 +81,12 @@ describe('syncVenvDeps', () => {
   })
 
   it('checks the venv against every wheel the payload declares, on the printer', async () => {
-    const enroll = recordingSession('')
+    const enroll = recordingSession(PIP_IN_PLACE)
 
     await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
     const checkCommand = enroll.commands.find((command) => command.includes(' -I -c '))
-    expect(quotedArgumentsOf(checkCommand ?? '').slice(2)).toEqual(PAYLOAD_WHEELS.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`))
+    expect(quotedArgumentsOf(checkCommand ?? '').slice(2)).toEqual(REMOTE_PAYLOAD_WHEELS)
   })
 
   it('installs only the wheels whose package the venv does not hold whole', async () => {
@@ -96,12 +101,12 @@ describe('syncVenvDeps', () => {
   // bare package name or a --find-links puts the resolver back on the network, which is the whole bug
   // this stage exists to kill, so anything but the exact flag set fails here.
   it('installs from files with pip off the network', async () => {
-    const enroll = recordingSession('')
+    const enroll = recordingSession(PIP_IN_PLACE)
 
     await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
 
     const installCommand = installCommandOf(enroll.commands)
-    expect(quotedArgumentsOf(installCommand)).toEqual(PAYLOAD_WHEELS.map((wheelPath) => `${DAEMON_BASE}/${wheelPath}`))
+    expect(quotedArgumentsOf(installCommand)).toEqual(REMOTE_PAYLOAD_WHEELS)
     expect(installCommand.replace(/'[^']+'/g, '').trim()).toBe(`${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall`)
   })
 
@@ -111,6 +116,32 @@ describe('syncVenvDeps', () => {
     await syncVenvDeps(enroll.ssh, silentEnroll, [])
 
     expect(enroll.commands).toEqual([])
+  })
+})
+
+describe('syncVenvDeps on a venv it cannot trust', () => {
+  it('keeps a venv whose pip is whole', async () => {
+    const enroll = recordingSession(PIP_IN_PLACE)
+
+    await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
+
+    expect(enroll.commands).not.toContain(VENV_REMAKE)
+  })
+
+  // The shell answers for a python that crashed, after whatever lines it wrote before the crash.
+  it.each([
+    ['the check crashes before writing a line', 'venv-check-crashed\n'],
+    ['the check crashes part way', `${PIP_IN_PLACE}\nvenv-check-crashed\n`],
+    ['the venv pip lost or changed a file', PIP_DAMAGED],
+    ['the venv holds no record of pip', ''],
+  ])('makes the venv again once and installs every wheel, unchecked, when %s', async (_venvFault, venvCheckAnswer) => {
+    const enroll = recordingSession(venvCheckAnswer)
+
+    await syncVenvDeps(enroll.ssh, silentEnroll, PAYLOAD_WHEELS)
+
+    expect(enroll.commands.filter((command) => command.endsWith(' || echo venv-check-crashed'))).toHaveLength(1)
+    expect(enroll.commands.filter((command) => command === VENV_REMAKE)).toHaveLength(1)
+    expect(quotedArgumentsOf(installCommandOf(enroll.commands))).toEqual(REMOTE_PAYLOAD_WHEELS)
   })
 })
 
@@ -129,11 +160,12 @@ describe('ensureVenv', () => {
   }
 
   it('asks the venv python to run as the venv, and the venv pip to run', async () => {
-    const venv = probedSession('yes')
+    const probedPrinter = probedSession('yes')
 
-    await ensureVenv(venv.ssh, silentEnroll)
+    await ensureVenv(probedPrinter.ssh, silentEnroll)
 
-    expect(venv.commands).toEqual([
+    expect(probedPrinter.commands).toEqual([
+      `rm -f ${BESPOK3D}/venv/.bespok3d-wheels`,
       `${BESPOK3D}/venv/bin/python3 -I -c 'import sys; sys.exit(sys.prefix == sys.base_prefix)' 2>/dev/null && ` +
       `${BESPOK3D}/venv/bin/pip --version >/dev/null 2>&1 && echo yes || echo no`,
     ])
@@ -141,10 +173,18 @@ describe('ensureVenv', () => {
 
   // A venv whose python is a link to nowhere still has the file, so only running it tells.
   it('makes the venv again from nothing when the probe finds it does not run', async () => {
-    const venv = probedSession('no')
+    const probedPrinter = probedSession('no')
 
-    await ensureVenv(venv.ssh, silentEnroll)
+    await ensureVenv(probedPrinter.ssh, silentEnroll)
 
-    expect(venv.commands[1]).toBe(`rm -rf ${BESPOK3D}/venv && python3 -m venv ${BESPOK3D}/venv`)
+    expect(probedPrinter.commands).toContain(VENV_REMAKE)
+  })
+
+  it('removes the wheel list an earlier release kept in the venv', async () => {
+    const probedPrinter = probedSession('yes')
+
+    await ensureVenv(probedPrinter.ssh, silentEnroll)
+
+    expect(probedPrinter.commands).toContain(`rm -f ${BESPOK3D}/venv/.bespok3d-wheels`)
   })
 })
