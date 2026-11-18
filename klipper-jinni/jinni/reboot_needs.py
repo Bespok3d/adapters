@@ -10,6 +10,7 @@ one line for the person standing in front of the machine.
 A generic linux box knows of no such state, so it reports none and the app offers nothing. A device
 tier that does know overrides this.
 """
+import subprocess
 
 
 class RebootNeeds:
@@ -17,3 +18,16 @@ class RebootNeeds:
         """The tokens for every condition on this box that only a boot clears, empty when there is
         none. A generic box has no device knowledge to recognise one, so it always answers empty."""
         return []
+
+    def watch_line(self, line: str) -> str | None:
+        """The token of a condition only a boot clears when this kernel log line reports one, None
+        otherwise. A generic box recognises no line."""
+        return None
+
+    def reboot_printer(self) -> None:
+        """Start a reboot and return at once. The reboot runs in its own session, detached from the
+        jinni, because it ends the jinni and its caller before any answer could come back."""
+        subprocess.Popen(
+            ["reboot"], start_new_session=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )

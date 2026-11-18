@@ -20,6 +20,7 @@ import board
 import firmware_config_origin
 import kernel_facts
 import module_scripts
+import screen_stuck
 import service_scripts
 from device_health import diagnose_broker
 from screen_wifi import screen_wifi_check
@@ -118,6 +119,12 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
 
     def startup_control_scripts(self, paths: dict[str, str]) -> list[ControlScript]:
         return service_scripts.startup_control_scripts(paths)
+
+    def reboot_required(self) -> list[str]:
+        return screen_stuck.reboot_tokens()
+
+    def watch_line(self, line: str) -> str | None:
+        return screen_stuck.watch_line(line)
 
     def background_tasks(self) -> list[Coroutine[Any, Any, None]]:
         return [wifi_watchdog(), screen_wifi_check(self.print_active)]

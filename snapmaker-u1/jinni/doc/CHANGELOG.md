@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.1.12
+## 0.2.0
+
+When the screen wakes up black and only a restart brings it back, the printer now notices and says
+it needs a restart.
 
 A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
 stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker

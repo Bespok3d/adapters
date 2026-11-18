@@ -8,6 +8,7 @@ import bespok3d_jinni
 import pytest
 from bespok3d_jinni import SnapmakerU1Jinni, make_jinni
 from device_health import BROKER_DOWN
+from screen_stuck import SCREEN_STUCK
 
 from jinni import KlipperPrinterJinni
 from jinni.klipper_vocab import KLIPPER_SERVICE, RESTART_DISPLAY
@@ -16,6 +17,14 @@ from protocol import DeviceHealth, ServiceHealth
 _PATHS_FILE = Path(bespok3d_jinni.__file__).resolve().parent / "paths.json"
 _VERSION_FILE = Path(bespok3d_jinni.__file__).resolve().parent / "version.json"
 _EXECUTABLE_MODE = 0o755
+_SLEEP_AND_WAKE_LOG = (
+    "[  610.204511] rockchip-vop2 ff400000.vop: *ERROR* wait win close timeout\n"
+    "[  611.204617] rockchip-vop2 ff400000.vop: *ERROR* wait for vp0 dsp_hold timeout\n"
+)
+_STUCK_SCREEN_LINE = (
+    "[  612.304702] rockchip-vop2 ff400000.vop: [drm:vop2_crtc_atomic_flush] *ERROR* vp0 failed to"
+    " attach dma mapping, -16"
+)
 
 
 def test_make_jinni_returns_the_u1_jinni() -> None:
@@ -229,12 +238,28 @@ def test_startup_control_scripts_render_the_lmdctl_script() -> None:
     assert "re-bouncing" in script
 
 
-def test_a_screen_that_went_to_sleep_is_never_reported_as_needing_a_power_cycle() -> None:
+def _kernel_log_reads(monkeypatch: pytest.MonkeyPatch, ring_buffer: str) -> None:
+    monkeypatch.setattr(bespok3d_jinni.screen_stuck.kernel_log, "ring_buffer", lambda: ring_buffer)
+
+
+def test_a_screen_that_went_to_sleep_is_never_reported_as_needing_a_power_cycle(
+    monkeypatch: pytest.MonkeyPatch, stuck_latch: Path,
+) -> None:
     """The U1's screen blanks itself after a few idle minutes, and the kernel prints its display
     warnings on that ordinary blank and again on the ordinary wake. Reading those as a dead screen
-    accused a perfectly healthy printer every single time it dimmed, so the U1 reports nothing to
-    power cycle until there is a read that can tell a sleeping screen from a dead one."""
+    accused a perfectly healthy printer every single time it dimmed."""
+    _kernel_log_reads(monkeypatch, _SLEEP_AND_WAKE_LOG)
     assert SnapmakerU1Jinni().reboot_required() == []
+
+
+def test_a_live_stuck_screen_line_is_named_and_then_reported(
+    monkeypatch: pytest.MonkeyPatch, stuck_latch: Path,
+) -> None:
+    jinni = SnapmakerU1Jinni()
+    _kernel_log_reads(monkeypatch, _SLEEP_AND_WAKE_LOG)
+    assert jinni.watch_line(_SLEEP_AND_WAKE_LOG.splitlines()[0]) is None
+    assert jinni.watch_line(_STUCK_SCREEN_LINE) == SCREEN_STUCK
+    assert jinni.reboot_required() == [SCREEN_STUCK]
 
 
 def test_paths_name_the_firmware_copies_the_boot_restores_the_configs_from() -> None:

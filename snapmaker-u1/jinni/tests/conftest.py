@@ -5,6 +5,8 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 JINNI_DIR = Path(__file__).resolve().parent.parent  # this adapter's device jinni (bespok3d_jinni)
 ADAPTERS_DIR = JINNI_DIR.parent.parent  # the org's adapters/ tree
 # The device jinni extends the shared klipper jinni runtime (the `jinni` package, in the sibling
@@ -27,3 +29,11 @@ DAEMON_DIR = daemon_dir_from(os.environ, ADAPTERS_DIR.parent)
 sys.path.insert(0, str(DAEMON_DIR))
 sys.path.insert(0, str(KLIPPER_JINNI_DIR))
 sys.path.insert(0, str(JINNI_DIR))
+
+
+@pytest.fixture
+def stuck_latch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """The stuck-screen latch moved into the test's own folder, so no test writes to /run."""
+    latch = tmp_path / "bespok3d-screen-stuck"
+    monkeypatch.setattr("screen_stuck.STUCK_LATCH", latch)
+    return latch
