@@ -4,6 +4,7 @@ import { openSystemPackage } from '@adapter-sdk'
 import type { BundledPackage, SshSession, EnrollContext } from '@adapter-sdk'
 
 import { openJinniSource } from '../jinni-deploy'
+import { keepSignedManifests } from '../machinery-manifests'
 import { newestWheelPerProject } from '../newest-wheels'
 import { syncPayload } from '../package-deploy'
 import { parseHashList, remoteHashCommand } from '../payload-hashes'
@@ -55,13 +56,14 @@ async function deployAutostartScript(ssh: SshSession, ctx: EnrollContext, signed
 // for the packages the venv does not hold whole, from these exact wheels.
 export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Promise<void> {
   const signedPackage = await openSystemPackage(DAEMON_PACKAGE)
+  const jinniSource = await openJinniSource()
   const runtimePaths = daemonRuntimePaths(signedPackage)
   ctx.onProgress?.('Creating directories…', UPLOAD_SPAN.from)
   await ssh.exec(`rm -rf ${LEGACY_DIR}`)
   await syncPayload({
     ssh,
     remoteBase: DAEMON_BASE,
-    sources: [{ signedPackage, payloadPaths: runtimePaths }, await openJinniSource()],
+    sources: [{ signedPackage, payloadPaths: runtimePaths }, jinniSource],
     sendChangedFilesOnly: ctx.sendChangedFilesOnly,
     progressLabel: 'Uploading daemon files…',
     onProgress: ctx.onProgress,
@@ -71,6 +73,7 @@ export async function stepDeployDaemon(ssh: SshSession, ctx: EnrollContext): Pro
   await cleanSystemPython(ssh)
   await removeLegacyWheelMarker(ssh)
   await syncVenvDeps(ssh, ctx, runtimePaths.filter((payloadPath) => payloadPath.startsWith(WHEEL_DIR)))
+  await keepSignedManifests(ssh, [signedPackage, jinniSource.signedPackage])
 }
 
 async function removeStaleWheels(ssh: SshSession, staleWheels: readonly string[]): Promise<void> {

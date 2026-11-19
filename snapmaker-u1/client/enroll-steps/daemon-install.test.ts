@@ -21,7 +21,7 @@ vi.mock('@adapter-sdk', async () => ({
 }))
 
 import { stepDeployDaemon } from './daemon-install'
-import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD, packagedContent } from '../fake-packages'
+import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD, packagedContent, packagedManifest } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import { DAEMON_PACKAGE, ADAPTER_JINNI_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
@@ -149,5 +149,37 @@ describe('stepDeployDaemon over an already enrolled printer', () => {
     expect(installCommand).toBe(
       `${BESPOK3D}/venv/bin/pip install --no-index --no-deps --force-reinstall '${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl'`,
     )
+  })
+})
+
+// The daemon reports the fingerprint each machinery package carried from these files, so the app can
+// offer a daemon or a jinni rebuilt at the same version. The paths are spelled out: they are where the
+// daemon reads them.
+describe('stepDeployDaemon keeping the signed manifests', () => {
+  const DAEMON_MANIFEST = `${DAEMON_BASE}/manifests/${DAEMON_PACKAGE}.json`
+  const JINNI_MANIFEST = `${DAEMON_BASE}/manifests/${ADAPTER_JINNI_PACKAGE}.json`
+
+  it('keeps the signed manifest of the daemon and of the jinni, byte for byte, with the mode of the payload', async () => {
+    stubBundledPackages()
+    const printer = fakePrinter()
+
+    await stepDeployDaemon(printer.ssh, silentEnroll)
+
+    expect(printer.files.get(DAEMON_MANIFEST)?.toString()).toBe(packagedManifest(DAEMON_PACKAGE))
+    expect(printer.files.get(JINNI_MANIFEST)?.toString()).toBe(packagedManifest(ADAPTER_JINNI_PACKAGE))
+    expect(printer.commands).toContain(`chmod 644 '${DAEMON_MANIFEST}' '${JINNI_MANIFEST}'`)
+  })
+
+  // A full send clears every entry the packages own, and the manifests must not be among them.
+  it('keeps them through a second full send', async () => {
+    stubBundledPackages()
+    const printer = fakePrinter()
+    await stepDeployDaemon(printer.ssh, silentEnroll)
+    printer.cutPoint = /^mkdir -p '[^']*\/manifests'$/
+
+    await expect(stepDeployDaemon(printer.ssh, silentEnroll)).rejects.toThrow('connection lost')
+
+    expect(printer.files.get(DAEMON_MANIFEST)?.toString()).toBe(packagedManifest(DAEMON_PACKAGE))
+    expect(printer.files.get(JINNI_MANIFEST)?.toString()).toBe(packagedManifest(ADAPTER_JINNI_PACKAGE))
   })
 })

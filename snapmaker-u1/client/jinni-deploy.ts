@@ -3,6 +3,7 @@
 import { openSystemPackage } from '@adapter-sdk'
 import type { SshSession, EnrollContext } from '@adapter-sdk'
 
+import { keepSignedManifests } from './machinery-manifests'
 import { syncPayload } from './package-deploy'
 import type { PayloadSource } from './package-deploy'
 import { ADAPTER_JINNI_PACKAGE } from './packages'
@@ -23,12 +24,14 @@ export async function openJinniSource(): Promise<PayloadSource> {
 }
 
 export async function uploadAdapterJinni(ssh: SshSession, ctx: EnrollContext): Promise<void> {
+  const jinniSource = await openJinniSource()
   await syncPayload({
     ssh,
     remoteBase: DAEMON_BASE,
-    sources: [await openJinniSource()],
+    sources: [jinniSource],
     sendChangedFilesOnly: ctx.sendChangedFilesOnly,
     progressLabel: 'Uploading jinni…',
     onProgress: ctx.onProgress,
   })
+  await keepSignedManifests(ssh, [jinniSource.signedPackage])
 }

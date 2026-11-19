@@ -23,11 +23,11 @@ vi.mock('@adapter-sdk', async () => ({
 }))
 
 import { stepDeployDaemon, stepRefreshDaemonVenv } from './daemon-install'
-import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD } from '../fake-packages'
+import { DAEMON_PAYLOAD, fakePackage, JINNI_PAYLOAD, packagedManifest } from '../fake-packages'
 import type { PackageRelease } from '../fake-packages'
 import { fakePrinter } from '../fake-printer'
 import type { FakePrinter } from '../fake-printer'
-import { DAEMON_PACKAGE } from '../packages'
+import { ADAPTER_JINNI_PACKAGE, DAEMON_PACKAGE } from '../packages'
 import { BESPOK3D, DAEMON_BASE } from '../paths'
 import { sha256Of } from '../payload-hashes'
 import type { DistributionState } from '../venv-record'
@@ -52,6 +52,10 @@ async function enrolledPrinter(printerFiles: Record<string, string> = {}): Promi
 
   return printer
 }
+
+// Where the daemon reads the fingerprint each machinery package carried.
+const DAEMON_MANIFEST = `${DAEMON_BASE}/manifests/${DAEMON_PACKAGE}.json`
+const JINNI_MANIFEST = `${DAEMON_BASE}/manifests/${ADAPTER_JINNI_PACKAGE}.json`
 
 const FASTAPI_WHEEL = `${DAEMON_BASE}/wheels/fastapi-0.115.0-py3-none-any.whl`
 const FASTAPI_DIST_INFO = `${BESPOK3D}/venv/lib/python3.11/site-packages/fastapi-0.115.0.dist-info`
@@ -81,7 +85,7 @@ describe('stepDeployDaemon as an update', () => {
     await stepDeployDaemon(printer.ssh, updateEnroll)
 
     expect(printer.streams).toEqual([])
-    expect(printer.uploads).toEqual([expect.stringContaining('s10bespok3d-daemon')])
+    expect(printer.uploads).toEqual([expect.stringContaining('s10bespok3d-daemon'), DAEMON_MANIFEST, JINNI_MANIFEST])
     expect(pipRuns(printer)).toEqual([])
   })
 
@@ -139,6 +143,38 @@ describe('stepDeployDaemon as an update that only drops a file', () => {
 
     expect(printer.streams).toEqual([])
     expect(printer.files.has(`${DAEMON_BASE}/core/legacy.py`)).toBe(false)
+  })
+})
+
+// A daemon rebuilt at the same version is told apart only by its fingerprint, so the update leaves the
+// rebuild's on the printer, and only once the rebuild is in place: an update cut short before it is
+// offered again.
+describe('stepDeployDaemon as an update rebuilt at the same version', () => {
+  const rebuild = { edited: { 'core/state.py': 'state, rebuilt' }, fingerprint: 'daemon rebuilt' }
+
+  it("keeps the rebuild's signed manifest", async () => {
+    const printer = await enrolledPrinter()
+    releaseDaemon(rebuild)
+
+    await stepDeployDaemon(printer.ssh, updateEnroll)
+
+    expect(printer.files.get(DAEMON_MANIFEST)?.toString()).toBe(packagedManifest(DAEMON_PACKAGE, 'daemon rebuilt'))
+    expect(printer.files.get(JINNI_MANIFEST)?.toString()).toBe(packagedManifest(ADAPTER_JINNI_PACKAGE))
+  })
+
+  it("leaves the replaced daemon's manifest when cut short after the files, and the rerun keeps the rebuild's", async () => {
+    const printer = await enrolledPrinter()
+    releaseDaemon(rebuild)
+    printer.cutPoint = /^mkdir -p '[^']*\/manifests'$/
+    await expect(stepDeployDaemon(printer.ssh, updateEnroll)).rejects.toThrow('connection lost')
+    printer.connectionLost = false
+
+    expect(printer.files.get(`${DAEMON_BASE}/core/state.py`)?.toString()).toBe('state, rebuilt')
+    expect(printer.files.get(DAEMON_MANIFEST)?.toString()).toBe(packagedManifest(DAEMON_PACKAGE))
+
+    await stepDeployDaemon(printer.ssh, updateEnroll)
+
+    expect(printer.files.get(DAEMON_MANIFEST)?.toString()).toBe(packagedManifest(DAEMON_PACKAGE, 'daemon rebuilt'))
   })
 })
 

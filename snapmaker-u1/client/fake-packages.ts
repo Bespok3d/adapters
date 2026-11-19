@@ -28,12 +28,18 @@ export function packagedContent(packageName: string, payloadPath: string): strin
   return `from ${packageName}: ${payloadPath}`
 }
 
+// The signed manifest a package carries, naming the fingerprint it was packed with.
+export function packagedManifest(packageName: string, fingerprint = `${packageName} as shipped`): string {
+  return JSON.stringify({ name: packageName, fingerprint })
+}
+
 // A release is the shipped payload with some files edited (`edited`), some left out (`dropped`), and
-// some new ones (`added`).
+// some new ones (`added`), packed with its own fingerprint (`fingerprint`).
 export interface PackageRelease {
   edited?: Record<string, string>
   dropped?: readonly string[]
   added?: Record<string, string>
+  fingerprint?: string
 }
 
 export function fakePackage(packageName: string, release: PackageRelease = {}): BundledPackage {
@@ -48,5 +54,6 @@ export function fakePackage(packageName: string, release: PackageRelease = {}): 
     trust: 'unknown',
     payloadPaths,
     payloadBytes: (payloadPath: string) => Buffer.from(release.edited?.[payloadPath] ?? release.added?.[payloadPath] ?? packagedContent(packageName, payloadPath)),
+    manifestBytes: () => Buffer.from(packagedManifest(packageName, release.fingerprint)),
   }
 }
