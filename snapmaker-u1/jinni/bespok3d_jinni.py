@@ -28,6 +28,7 @@ from screen_wifi import screen_wifi_check
 from wifi_watchdog import wifi_watchdog
 
 from jinni import KlipperPrinterJinni
+from jinni.include_lines import WIRED_CONFIGS, has_include_line
 from protocol import ControlScript, DeviceHealth
 
 # The single source of truth for the U1 path variables. Read here at runtime AND by the app-side
@@ -64,6 +65,15 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
     def _live_and_origin_copies(self, live_key: str) -> list[Path]:
         return [*super().config_copies(live_key),
                 *firmware_config_origin.origin_copies(self.paths(), live_key)]
+
+    def bespok3d_include_status(self) -> dict[str, bool]:
+        return {wired.device_name: all(has_include_line(copy, wired.pattern)
+                                       for copy in self._copies_the_printer_loads(wired.path_key))
+                for wired in WIRED_CONFIGS}
+
+    def _copies_the_printer_loads(self, path_key: str) -> list[Path]:
+        return firmware_config_origin.copies_the_printer_loads(self.paths(),
+                                                               self.config_copies(path_key))
 
     def hardware(self) -> list[str]:
         return ["camera-mipi", "rfid-spi", "npu-rknn"]

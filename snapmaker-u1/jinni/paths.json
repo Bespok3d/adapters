@@ -13,6 +13,8 @@
   "PRINTER_CFG_ORIGIN": "/home/lava/origin_printer_data/config/printer.cfg",
   "MOONRAKER_CFG_ORIGIN": "/home/lava/origin_printer_data/config/moonraker.conf",
   "PRINTER_V2_CFG_ORIGIN": "/home/lava/origin_printer_data/config/printer_v2.cfg",
+  "ADVANCED_MODE_MARKER": "/oem/printer_data/.fluidd",
+  "FACTORY_MARKER": "/oem/.factory",
   "PYTHON_SITE_PACKAGES": "/usr/lib/python3.11/site-packages",
   "KLIPPER_LOG": "/oem/klippylogs/klippy.log:/oem/printer_data/logs/klippy.log",
   "MOONRAKER_LOG": "/oem/printer_data/logs/moonraker.log",

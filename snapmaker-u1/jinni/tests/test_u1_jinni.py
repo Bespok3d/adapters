@@ -269,15 +269,18 @@ def test_paths_name_the_firmware_copies_the_boot_restores_the_configs_from() -> 
     assert paths["MOONRAKER_CFG_ORIGIN"] == "/home/lava/origin_printer_data/config/moonraker.conf"
 
 
-# The real paths.json names /oem files. A test that does not set up the newer mainboard's config
-# points it at a missing file, so it never reads or writes a real printer's config.
+# The real paths.json names /oem files. A test that does not set up the newer mainboard's config or
+# a marker that stops the boot restore points it at a missing file, so it never reads or writes a
+# real printer's files.
 _NEWER_MAINBOARD_KEYS = ("PRINTER_V2_CFG", "PRINTER_V2_CFG_ORIGIN")
+_RESTORE_MARKER_KEYS = ("ADVANCED_MODE_MARKER", "FACTORY_MARKER")
+_KEYS_KEPT_OFF_THE_PRINTER = (*_NEWER_MAINBOARD_KEYS, *_RESTORE_MARKER_KEYS)
 
 
 def _u1_with_configs(monkeypatch: pytest.MonkeyPatch, config_paths: dict[str, Path]) -> None:
     shared_paths = json.loads(_PATHS_FILE.read_text())
     absent_config = config_paths["PRINTER_CFG"].parent / "no-such-config"
-    test_paths = ({key: str(absent_config) for key in _NEWER_MAINBOARD_KEYS}
+    test_paths = ({key: str(absent_config) for key in _KEYS_KEPT_OFF_THE_PRINTER}
                   | {key: str(path) for key, path in config_paths.items()})
     monkeypatch.setattr(SnapmakerU1Jinni, "device_paths", lambda _self: shared_paths | test_paths)
 
@@ -334,6 +337,74 @@ def test_restored_includes_survive_the_boot_putting_the_firmware_copy_back(
     assert SnapmakerU1Jinni().bespok3d_include_status() == {
         "printer.cfg": True, "moonraker.conf": True,
     }
+
+
+def _stock_configs_on_a_printer_whose_boot_skips_the_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_key: str,
+) -> dict[str, Path]:
+    config_paths = _stock_live_and_origin_configs(tmp_path)
+    config_paths[marker_key] = tmp_path / "marker"
+    config_paths[marker_key].touch()
+    _u1_with_configs(monkeypatch, config_paths)
+    return config_paths
+
+
+@pytest.mark.parametrize("marker_key", _RESTORE_MARKER_KEYS)
+def test_origin_copies_without_the_line_do_not_flag_a_printer_whose_boot_never_restores_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_key: str,
+) -> None:
+    """S48setup-lava-env skips the restore when Advanced mode (enrollment turns it on) or the
+    factory marker is on, so only the live configs load bespok3d there."""
+    config_paths = _stock_configs_on_a_printer_whose_boot_skips_the_restore(
+        tmp_path, monkeypatch, marker_key)
+    for wired in WIRED_CONFIGS:
+        config_paths[wired.path_key].write_text(f"[stock]\n{wired.include_line}\n")
+
+    assert SnapmakerU1Jinni().bespok3d_include_status() == {
+        "printer.cfg": True, "moonraker.conf": True,
+    }
+
+
+def test_a_folder_at_the_marker_path_does_not_stop_the_boot_restoring_the_backup_copies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S48setup-lava-env tests the markers with [ -f ], so only a file stops the restore."""
+    config_paths = _stock_live_and_origin_configs(tmp_path)
+    config_paths["ADVANCED_MODE_MARKER"] = tmp_path / "marker-folder"
+    config_paths["ADVANCED_MODE_MARKER"].mkdir()
+    _u1_with_configs(monkeypatch, config_paths)
+    config_paths["PRINTER_CFG"].write_text(f"[stock]\n{_PRINTER_CFG_WIRING.include_line}\n")
+
+    assert SnapmakerU1Jinni().bespok3d_include_status()["printer.cfg"] is False
+
+
+def test_restoring_the_includes_still_wires_the_origin_copies_the_boot_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_paths = _stock_configs_on_a_printer_whose_boot_skips_the_restore(
+        tmp_path, monkeypatch, "ADVANCED_MODE_MARKER")
+
+    SnapmakerU1Jinni().restore_bespok3d_includes()
+
+    assert _PRINTER_CFG_WIRING.include_line in config_paths["PRINTER_CFG_ORIGIN"].read_text()
+
+
+def test_switching_bespok3d_off_still_unwires_the_origin_copies_the_boot_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_paths = _stock_configs_on_a_printer_whose_boot_skips_the_restore(
+        tmp_path, monkeypatch, "ADVANCED_MODE_MARKER")
+    SnapmakerU1Jinni().restore_bespok3d_includes()
+
+    SnapmakerU1Jinni().remove_bespok3d_includes()
+
+    assert _PRINTER_CFG_WIRING.include_line not in config_paths["PRINTER_CFG_ORIGIN"].read_text()
+
+
+def test_paths_name_the_markers_that_stop_the_boot_restoring_the_backup_copies() -> None:
+    paths = SnapmakerU1Jinni().paths()
+    assert paths["ADVANCED_MODE_MARKER"] == "/oem/printer_data/.fluidd"
+    assert paths["FACTORY_MARKER"] == "/oem/.factory"
 
 
 def test_paths_name_the_config_the_newer_mainboard_starts_klipper_on() -> None:
