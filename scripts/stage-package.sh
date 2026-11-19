@@ -56,4 +56,10 @@ cp -p "$MANIFEST" "$stage_dir/manifest.json"
       cp -p "$U1_JINNI_DIR/$rel" "$files_root/$rel"
     done
 
+# The release attaches the changelog the manifest names, read from the staged dir; without it the
+# release stops before anything is built.
+changelog="$(jq -r '.changelog' "$MANIFEST")"
+mkdir -p "$stage_dir/$(dirname "$changelog")"
+cp -p "$U1_JINNI_DIR/$changelog" "$stage_dir/$changelog"
+
 echo "Staged: $stage_dir"

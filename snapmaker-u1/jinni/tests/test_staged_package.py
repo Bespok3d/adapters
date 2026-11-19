@@ -17,6 +17,9 @@ PACKAGE_NAME = json.loads(
     (ADAPTERS_ROOT / "snapmaker-u1" / "jinni" / "manifest.json").read_text()
 )["name"]
 PACKAGE_DIR = STAGE_DIR / PACKAGE_NAME
+CHANGELOG_PATH = json.loads(
+    (ADAPTERS_ROOT / "snapmaker-u1" / "jinni" / "manifest.json").read_text()
+)["changelog"]
 
 
 def _stage() -> None:
@@ -55,3 +58,9 @@ def test_staged_package_carries_both_halves() -> None:
     assert (
         files_root / "jinni" / "__init__.py"
     ).is_file(), "the shared runtime must be staged under files/jinni/"
+
+
+def test_the_changelog_the_manifest_names_is_staged_because_the_release_attaches_it() -> None:
+    _stage()
+
+    assert (PACKAGE_DIR / CHANGELOG_PATH).is_file(), "b3-builder stops a release with no changelog"
