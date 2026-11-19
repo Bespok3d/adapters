@@ -11,6 +11,7 @@ from device_health import BROKER_DOWN
 from screen_stuck import SCREEN_STUCK
 
 from jinni import KlipperPrinterJinni
+from jinni.include_lines import WIRED_CONFIGS, WiredConfig
 from jinni.klipper_vocab import KLIPPER_SERVICE, RESTART_DISPLAY
 from protocol import DeviceHealth, ServiceHealth
 
@@ -268,12 +269,17 @@ def test_paths_name_the_firmware_copies_the_boot_restores_the_configs_from() -> 
     assert paths["MOONRAKER_CFG_ORIGIN"] == "/home/lava/origin_printer_data/config/moonraker.conf"
 
 
+# The real paths.json names /oem files. A test that does not set up the newer mainboard's config
+# points it at a missing file, so it never reads or writes a real printer's config.
+_NEWER_MAINBOARD_KEYS = ("PRINTER_V2_CFG", "PRINTER_V2_CFG_ORIGIN")
+
+
 def _u1_with_configs(monkeypatch: pytest.MonkeyPatch, config_paths: dict[str, Path]) -> None:
     shared_paths = json.loads(_PATHS_FILE.read_text())
-    monkeypatch.setattr(
-        SnapmakerU1Jinni, "device_paths",
-        lambda _self: shared_paths | {key: str(path) for key, path in config_paths.items()},
-    )
+    absent_config = config_paths["PRINTER_CFG"].parent / "no-such-config"
+    test_paths = ({key: str(absent_config) for key in _NEWER_MAINBOARD_KEYS}
+                  | {key: str(path) for key, path in config_paths.items()})
+    monkeypatch.setattr(SnapmakerU1Jinni, "device_paths", lambda _self: shared_paths | test_paths)
 
 
 def test_config_copies_add_the_firmware_copy_the_boot_restores_from(
@@ -328,3 +334,76 @@ def test_restored_includes_survive_the_boot_putting_the_firmware_copy_back(
     assert SnapmakerU1Jinni().bespok3d_include_status() == {
         "printer.cfg": True, "moonraker.conf": True,
     }
+
+
+def test_paths_name_the_config_the_newer_mainboard_starts_klipper_on() -> None:
+    paths = SnapmakerU1Jinni().paths()
+    assert paths["PRINTER_V2_CFG"] == "/oem/printer_data/config/printer_v2.cfg"
+    assert paths["PRINTER_V2_CFG_ORIGIN"] == "/home/lava/origin_printer_data/config/printer_v2.cfg"
+
+
+def _stock_configs_with_the_newer_mainboard_config(tmp_path: Path) -> dict[str, Path]:
+    config_paths = _stock_live_and_origin_configs(tmp_path)
+    config_paths["PRINTER_V2_CFG"] = tmp_path / "live" / "printer_v2.cfg"
+    config_paths["PRINTER_V2_CFG_ORIGIN"] = tmp_path / "origin" / "printer_v2.cfg"
+    config_paths["PRINTER_V2_CFG"].write_text("[stock]\n")
+    config_paths["PRINTER_V2_CFG_ORIGIN"].write_text("[stock]\n")
+    return config_paths
+
+
+def test_config_copies_add_the_config_the_newer_mainboard_starts_klipper_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_paths = _stock_configs_with_the_newer_mainboard_config(tmp_path)
+    _u1_with_configs(monkeypatch, config_paths)
+
+    assert SnapmakerU1Jinni().config_copies("PRINTER_CFG") == [
+        config_paths["PRINTER_CFG"], config_paths["PRINTER_CFG_ORIGIN"],
+        config_paths["PRINTER_V2_CFG"], config_paths["PRINTER_V2_CFG_ORIGIN"],
+    ]
+
+
+_PRINTER_CFG_WIRING = next(wired for wired in WIRED_CONFIGS if wired.path_key == "PRINTER_CFG")
+
+
+def _wire_live_and_origin(config_paths: dict[str, Path], wired: WiredConfig) -> None:
+    for path_key in (wired.path_key, f"{wired.path_key}_ORIGIN"):
+        config_paths[path_key].write_text(f"[stock]\n{wired.include_line}\n")
+
+
+def test_a_newer_mainboard_config_without_the_line_counts_as_unwired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A printer on the gd32h757 board starts klipper on printer_v2.cfg and never reads
+    printer.cfg, so printer.cfg alone carrying the line still loads no plugin there."""
+    config_paths = _stock_configs_with_the_newer_mainboard_config(tmp_path)
+    _u1_with_configs(monkeypatch, config_paths)
+    for wired in WIRED_CONFIGS:
+        _wire_live_and_origin(config_paths, wired)
+
+    assert SnapmakerU1Jinni().bespok3d_include_status()["printer.cfg"] is False
+
+
+def test_restoring_the_includes_wires_the_newer_mainboard_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_paths = _stock_configs_with_the_newer_mainboard_config(tmp_path)
+    _u1_with_configs(monkeypatch, config_paths)
+
+    SnapmakerU1Jinni().restore_bespok3d_includes()
+
+    assert _PRINTER_CFG_WIRING.include_line in config_paths["PRINTER_V2_CFG"].read_text()
+    assert _PRINTER_CFG_WIRING.include_line in config_paths["PRINTER_V2_CFG_ORIGIN"].read_text()
+
+
+def test_switching_bespok3d_off_unwires_the_newer_mainboard_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_paths = _stock_configs_with_the_newer_mainboard_config(tmp_path)
+    _u1_with_configs(monkeypatch, config_paths)
+    SnapmakerU1Jinni().restore_bespok3d_includes()
+
+    SnapmakerU1Jinni().remove_bespok3d_includes()
+
+    assert _PRINTER_CFG_WIRING.include_line not in config_paths["PRINTER_V2_CFG"].read_text()
+    assert _PRINTER_CFG_WIRING.include_line not in config_paths["PRINTER_V2_CFG_ORIGIN"].read_text()

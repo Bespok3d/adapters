@@ -1,14 +1,25 @@
 // SPDX-FileCopyrightText: Copyright (C) 2026 unlucio and the Bespok3d contributors
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
+// paths.ts reads the adapter's paths.json through electron's app path at module load.
+vi.mock('electron', () => ({
+  app: { isPackaged: false, getAppPath: () => fileURLToPath(new URL('../../../Bespok3d-desktop', import.meta.url)) },
+}))
+
+vi.mock('@adapter-sdk', async () => await import('./fake-sdk'))
+
+import { fakePrinter } from './fake-printer'
 import {
   bespok3dIncludeCommand,
   bespok3dIncludeIfPresentCommand,
   KLIPPER_INCLUDE,
   MOONRAKER_INCLUDE,
+  newerMainboardIncludesCommand,
+  writeBespok3dIncludes,
 } from './klipper-includes'
 
 describe('bespok3dIncludeCommand', () => {
@@ -46,6 +57,51 @@ describe('bespok3dIncludeIfPresentCommand', () => {
 
   it('does nothing on a firmware that has no copy to restore from', () => {
     expect(command.startsWith('test ! -f /origin/printer.cfg || {')).toBe(true)
+  })
+})
+
+describe('writeBespok3dIncludes', () => {
+  it('wires the config the newer gd32h757 mainboard starts Klipper on', async () => {
+    var printer = fakePrinter()
+
+    await writeBespok3dIncludes(printer.ssh)
+
+    expect(printer.commands).toContain(newerMainboardIncludesCommand())
+    expect(newerMainboardIncludesCommand()).toContain(
+      bespok3dIncludeCommand('/oem/printer_data/config/printer_v2.cfg', KLIPPER_INCLUDE)
+    )
+  })
+
+  it('wires the firmware copy of that config, which the boot puts back over it', async () => {
+    var printer = fakePrinter()
+
+    await writeBespok3dIncludes(printer.ssh)
+
+    expect(newerMainboardIncludesCommand()).toContain(
+      bespok3dIncludeIfPresentCommand('/home/lava/origin_printer_data/config/printer_v2.cfg', KLIPPER_INCLUDE)
+    )
+  })
+
+  it('leaves the firmware copy alone on a printer without the newer mainboard config', () => {
+    const liveWrite = bespok3dIncludeCommand('/oem/printer_data/config/printer_v2.cfg', KLIPPER_INCLUDE)
+    const firmwareCopyWrite = bespok3dIncludeIfPresentCommand('/home/lava/origin_printer_data/config/printer_v2.cfg', KLIPPER_INCLUDE)
+
+    expect(newerMainboardIncludesCommand()).toBe(
+      `test ! -f /oem/printer_data/config/printer_v2.cfg || { ${liveWrite} && ${firmwareCopyWrite}; }`
+    )
+  })
+
+  it('wires the live printer and Moonraker configs and their firmware copies', async () => {
+    var printer = fakePrinter()
+
+    await writeBespok3dIncludes(printer.ssh)
+
+    expect(printer.commands).toEqual(expect.arrayContaining([
+      bespok3dIncludeCommand('/oem/printer_data/config/printer.cfg', KLIPPER_INCLUDE),
+      bespok3dIncludeCommand('/oem/printer_data/config/moonraker.conf', MOONRAKER_INCLUDE),
+      bespok3dIncludeIfPresentCommand('/home/lava/origin_printer_data/config/printer.cfg', KLIPPER_INCLUDE),
+      bespok3dIncludeIfPresentCommand('/home/lava/origin_printer_data/config/moonraker.conf', MOONRAKER_INCLUDE),
+    ]))
   })
 })
 

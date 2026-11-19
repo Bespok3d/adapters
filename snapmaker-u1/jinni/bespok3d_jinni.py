@@ -19,6 +19,7 @@ from typing import Any
 import board
 import firmware_config_origin
 import kernel_facts
+import mainboard_configs
 import module_scripts
 import screen_stuck
 import service_scripts
@@ -56,8 +57,13 @@ class SnapmakerU1Jinni(KlipperPrinterJinni):
         return paths
 
     def config_copies(self, path_key: str) -> list[Path]:
-        return [*super().config_copies(path_key),
-                *firmware_config_origin.origin_copies(self.paths(), path_key)]
+        live_keys = [path_key,
+                     *mainboard_configs.other_mainboard_config_keys(self.paths(), path_key)]
+        return [copy for live_key in live_keys for copy in self._live_and_origin_copies(live_key)]
+
+    def _live_and_origin_copies(self, live_key: str) -> list[Path]:
+        return [*super().config_copies(live_key),
+                *firmware_config_origin.origin_copies(self.paths(), live_key)]
 
     def hardware(self) -> list[str]:
         return ["camera-mipi", "rfid-spi", "npu-rknn"]

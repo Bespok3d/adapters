@@ -12,6 +12,11 @@ too, and switching Bespok3d off takes it out of both. A printer that already had
 banner once, and "Put it back" then fixes it for good. Printers on other firmware work as before.
 Thanks to olavgm.
 
+A printer on the newer mainboard loaded no Bespok3d plugins. That board starts Klipper from its
+own settings file, and Bespok3d was never added there. Bespok3d is now added to that file too, and
+to the copy the firmware puts back on every boot. A printer that already had Bespok3d shows the
+banner once, and "Put it back" then fixes it.
+
 When the printer lost its Wi-Fi, Bespok3d put back the network saved on the screen, and that could
 replace the network Bespok3d keeps. The kept network now stays, and if the screen's network
 cannot be put back, the printer says so in its log. If restarting the Wi-Fi fails, the printer

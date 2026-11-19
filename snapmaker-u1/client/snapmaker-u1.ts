@@ -12,7 +12,7 @@ import { JINNI_VERSION } from './version'
 // The adapter's public surface, consumed by the app's main process (patchS90lmd) and the adapter
 // tests, re-exported from the concern modules so importers keep a single entry point.
 export { patchNginx, patchS90lmd } from './stock-patches'
-export { bespok3dIncludeCommand, KLIPPER_INCLUDE, MOONRAKER_INCLUDE } from './klipper-includes'
+export { writeBespok3dIncludes } from './klipper-includes'
 export { isPrinting } from './print-state'
 export { writeLayerActive, verifyEnrolled } from './overlay'
 

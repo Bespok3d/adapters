@@ -3,6 +3,9 @@
 // The one place that writes a bespok3d include line into the printer's own klipper and moonraker
 // config. Enrollment does it once and switching bespok3d back on does it again, so both go through
 // here; the jinni owns the same edit on the device side, for the times there is a daemon to ask.
+import type { SshSession } from '@adapter-sdk'
+
+import { PATHS } from './paths'
 
 export interface Bespok3dInclude {
   // What any form of our include line looks like, so a config that already carries one (including
@@ -33,10 +36,28 @@ open('${cfgPath}', 'w').write(head + '\\n\\n' + '${include.line}' + '\\n' + tail
 "`
 }
 
-// The U1 firmware keeps its own copy of each config under /home/lava/origin_printer_data, and on
-// firmware 2.0 its boot (S48setup-lava-env) puts that copy back over a live config that differs, so
-// a line written only into the live config is gone after the next boot. The copy gets the same line.
-// A firmware without the copy has nothing to restore from, and then nothing is written.
+// The include for a config only some firmware has. A firmware without it never reads it, and then
+// nothing is written.
 export function bespok3dIncludeIfPresentCommand(cfgPath: string, include: Bespok3dInclude): string {
   return `test ! -f ${cfgPath} || { ${bespok3dIncludeCommand(cfgPath, include)}; }`
+}
+
+// Every config the printer may start Klipper or Moonraker on. Firmware 2.0 starts Klipper on
+// printer_v2.cfg instead of printer.cfg when the mainboard is the newer gd32h757 one (S60klipper),
+// so a printer on that board loads no plugin unless that file carries the include too. Firmware 2.0
+// also keeps its own copy of each config under /home/lava/origin_printer_data, and its boot
+// (S48setup-lava-env) puts that copy back over a live config that differs, so a line written only
+// into the live config is gone after the next boot. Each copy gets the same line.
+export async function writeBespok3dIncludes(ssh: SshSession): Promise<void> {
+  await ssh.exec(bespok3dIncludeCommand(PATHS.PRINTER_CFG, KLIPPER_INCLUDE))
+  await ssh.exec(bespok3dIncludeCommand(PATHS.MOONRAKER_CFG, MOONRAKER_INCLUDE))
+  await ssh.exec(newerMainboardIncludesCommand())
+  await ssh.exec(bespok3dIncludeIfPresentCommand(PATHS.PRINTER_CFG_ORIGIN, KLIPPER_INCLUDE))
+  await ssh.exec(bespok3dIncludeIfPresentCommand(PATHS.MOONRAKER_CFG_ORIGIN, MOONRAKER_INCLUDE))
+}
+
+// The firmware copy of printer_v2.cfg is wired only when the live one exists, the same rule the
+// jinni follows, so switching Bespok3d off on the printer finds every line this wrote.
+export function newerMainboardIncludesCommand(): string {
+  return `test ! -f ${PATHS.PRINTER_V2_CFG} || { ${bespok3dIncludeCommand(PATHS.PRINTER_V2_CFG, KLIPPER_INCLUDE)} && ${bespok3dIncludeIfPresentCommand(PATHS.PRINTER_V2_CFG_ORIGIN, KLIPPER_INCLUDE)}; }`
 }
