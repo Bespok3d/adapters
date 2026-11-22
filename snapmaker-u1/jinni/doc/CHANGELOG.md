@@ -5,6 +5,14 @@
 When the screen wakes up black and only a restart brings it back, the printer now notices and says
 it needs a restart.
 
+A printer on a cable, through a USB Ethernet adapter, whose Wi-Fi could not connect had its Wi-Fi
+restarted by Bespok3d every 30 seconds for as long as it ran. Each restart also made the printer
+drop its cloud connection and connect again, more than a hundred times an hour. Bespok3d now
+leaves the Wi-Fi alone while the printer is online another way, and while every Wi-Fi network
+saved on it is switched off. A printer that has only its Wi-Fi still gets it back as before.
+
+## 0.1.12
+
 A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
 stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker
 settings, and that copy did not know about Bespok3d. "Put it back" now adds Bespok3d to that copy

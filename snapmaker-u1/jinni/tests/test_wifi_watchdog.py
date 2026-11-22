@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+import wifi_heal_policy
 import wifi_persistence
 import wifi_watchdog
 
@@ -20,6 +21,13 @@ def _no_real_wifi_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_SRC", tmp_path / "unused-screen.conf")
     monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", tmp_path / "unused-live.conf")
     monkeypatch.setattr(wifi_watchdog, "WIFI_PERSISTENT_CONFIG", tmp_path / "unused-kept.conf")
+
+
+# Whether a heal is wanted reads this machine's own routes, so the tests below decide it themselves;
+# the ones about that decision put the real check back.
+@pytest.fixture(autouse=True)
+def _heal_wanted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(wifi_watchdog, "wifi_heal_wanted", lambda _wlan, _config: True)
 
 
 def test_heals_only_when_the_interface_is_up_without_an_ip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,6 +46,53 @@ def test_does_not_heal_when_the_interface_has_an_ip(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: True)
     wifi_watchdog._check_and_heal()
     assert healed == []
+
+
+def _install_routes(tools_dir: Path, default_routes: str) -> None:
+    """A stand-in for ip that prints the given default routes."""
+    (tools_dir / "ip").write_text(f"#!/bin/sh\nprintf '%s' '{default_routes}'\n")
+    (tools_dir / "ip").chmod(0o755)
+
+
+def _heals_with_the_real_check(
+    monkeypatch: pytest.MonkeyPatch, tools_dir: Path, default_routes: str, live_config: str,
+) -> list[str]:
+    healed: list[str] = []
+    _install_routes(tools_dir, default_routes)
+    (tools_dir / "live.conf").write_text(live_config)
+    monkeypatch.setenv("PATH", str(tools_dir))
+    monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", tools_dir / "live.conf")
+    monkeypatch.setattr(wifi_watchdog, "wifi_heal_wanted", wifi_heal_policy.wifi_heal_wanted)
+    monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
+    monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: False)
+    wifi_watchdog._check_and_heal()
+    return healed
+
+
+WIRED_ROUTE = "default via 192.0.2.1 dev eth0 proto dhcp src 192.0.2.6 metric 1002\n"
+
+
+# The bug: on a printer wired through an Ethernet adapter, with its Wi-Fi off, the watchdog took
+# wlan0 down and up every 30 seconds for as long as the printer ran.
+def test_does_not_heal_a_printer_online_through_another_interface(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    assert _heals_with_the_real_check(monkeypatch, tmp_path, WIRED_ROUTE, KEPT_NETWORK) == []
+
+
+# The bug: a network switched off on purpose (disabled=1) was restarted every 30 seconds anyway.
+def test_does_not_heal_when_every_saved_network_is_switched_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    switched_off = 'network={\n\tssid="home"\n\tdisabled=1\n}\n'
+    assert _heals_with_the_real_check(monkeypatch, tmp_path, "", switched_off) == []
+
+
+def test_heals_a_printer_with_no_other_way_online(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    assert _heals_with_the_real_check(monkeypatch, tmp_path, "", KEPT_NETWORK) == ["heal"]
 
 
 def test_does_not_heal_when_there_is_no_wlan_interface(monkeypatch: pytest.MonkeyPatch) -> None:
