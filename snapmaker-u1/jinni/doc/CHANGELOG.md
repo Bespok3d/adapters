@@ -11,6 +11,13 @@ drop its cloud connection and connect again, more than a hundred times an hour. 
 leaves the Wi-Fi alone while the printer is online another way, and while every Wi-Fi network
 saved on it is switched off. A printer that has only its Wi-Fi still gets it back as before.
 
+A Wi-Fi network forgotten on the printer's screen came back within 30 seconds: Bespok3d took the
+lost connection for a fault and put the network back. The printer now reads the screen's own log,
+and when the screen says the network was forgotten, Bespok3d leaves the Wi-Fi alone, after a
+restart too, until a network is saved again. A firmware update that clears the Wi-Fi is still
+healed as before. If the printer is switched off within 30 seconds of the forget, the network
+comes back once.
+
 A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
 stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker
 settings, and that copy did not know about Bespok3d. "Put it back" now adds Bespok3d to that copy
