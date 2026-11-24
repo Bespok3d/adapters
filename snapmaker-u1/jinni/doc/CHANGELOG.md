@@ -11,8 +11,6 @@ drop its cloud connection and connect again, more than a hundred times an hour. 
 leaves the Wi-Fi alone while the printer is online another way, and while every Wi-Fi network
 saved on it is switched off. A printer that has only its Wi-Fi still gets it back as before.
 
-## 0.1.12
-
 A printer on firmware 2.0 lost its Bespok3d plugins after every reboot, and "Put it back" never
 stuck. On every boot that firmware puts back its own saved copy of the printer and Moonraker
 settings, and that copy did not know about Bespok3d. "Put it back" now adds Bespok3d to that copy

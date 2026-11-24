@@ -10,6 +10,7 @@ import pytest
 import wifi_heal_policy
 import wifi_persistence
 import wifi_watchdog
+from default_routes import WIRED_IPV6_ROUTE, WIRED_ROUTE, print_default_routes
 
 SCREEN_NETWORK = 'network={ ssid="old-lan" }'
 KEPT_NETWORK = 'network={ ssid="home" }'
@@ -48,19 +49,16 @@ def test_does_not_heal_when_the_interface_has_an_ip(monkeypatch: pytest.MonkeyPa
     assert healed == []
 
 
-def _install_routes(tools_dir: Path, default_routes: str) -> None:
-    """A stand-in for ip that prints the given default routes."""
-    (tools_dir / "ip").write_text(f"#!/bin/sh\nprintf '%s' '{default_routes}'\n")
-    (tools_dir / "ip").chmod(0o755)
-
-
 def _heals_with_the_real_check(
-    monkeypatch: pytest.MonkeyPatch, tools_dir: Path, default_routes: str, live_config: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tools_dir: Path,
+    default_routes: str,
+    live_config: str,
+    ipv6_default_routes: str = "",
 ) -> list[str]:
     healed: list[str] = []
-    _install_routes(tools_dir, default_routes)
+    print_default_routes(monkeypatch, tools_dir, default_routes, ipv6_default_routes)
     (tools_dir / "live.conf").write_text(live_config)
-    monkeypatch.setenv("PATH", str(tools_dir))
     monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", tools_dir / "live.conf")
     monkeypatch.setattr(wifi_watchdog, "wifi_heal_wanted", wifi_heal_policy.wifi_heal_wanted)
     monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
@@ -70,15 +68,20 @@ def _heals_with_the_real_check(
     return healed
 
 
-WIRED_ROUTE = "default via 192.0.2.1 dev eth0 proto dhcp src 192.0.2.6 metric 1002\n"
-
-
 # The bug: on a printer wired through an Ethernet adapter, with its Wi-Fi off, the watchdog took
 # wlan0 down and up every 30 seconds for as long as the printer ran.
 def test_does_not_heal_a_printer_online_through_another_interface(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     assert _heals_with_the_real_check(monkeypatch, tmp_path, WIRED_ROUTE, KEPT_NETWORK) == []
+
+
+# The bug: a printer wired with only an IPv6 default route had its Wi-Fi restarted every 30 seconds.
+def test_does_not_heal_a_printer_online_only_through_ipv6(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    healed = _heals_with_the_real_check(monkeypatch, tmp_path, "", KEPT_NETWORK, WIRED_IPV6_ROUTE)
+    assert healed == []
 
 
 # The bug: a network switched off on purpose (disabled=1) was restarted every 30 seconds anyway.

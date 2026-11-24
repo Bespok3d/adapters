@@ -13,23 +13,30 @@ import subprocess
 from pathlib import Path
 
 ROUTE_TIMEOUT_S = 10
-ROUTE_DEVICE = re.compile(r"\bdev (\S+)")
-# Read as bytes, like wifi_persistence: a network name need not be valid UTF-8.
-SAVED_NETWORK_BLOCK = re.compile(rb"network\s*=\s*\{(.*?)\}", re.DOTALL)
+# Only a plain default route that still has its link leads anywhere: an unreachable or blackhole
+# default starts with its type instead, and a cable pulled out leaves its route marked linkdown.
+WORKING_DEFAULT_ROUTE = re.compile(r"^default\b(?!.*\blinkdown\b).*?\bdev (\S+)", re.MULTILINE)
+# Read as bytes, like wifi_persistence: a network name need not be valid UTF-8. wpa_supplicant
+# ends a network block only at a line holding just "}", so a "}" in a quoted name or password
+# does not end it.
+SAVED_NETWORK_BLOCK = re.compile(
+    rb"^\s*network\s*=\s*\{\s*$(.*?)^\s*\}\s*$", re.DOTALL | re.MULTILINE,
+)
 DISABLED_SETTING = re.compile(rb"^\s*disabled\s*=\s*1\s*$", re.MULTILINE)
 
 
-def _default_route_devices() -> list[str]:
+def _default_route_devices(address_family: str) -> list[str]:
     result = subprocess.run(
-        ["ip", "-4", "route", "show", "default"],
+        ["ip", address_family, "route", "show", "default"],
         capture_output=True, text=True, timeout=ROUTE_TIMEOUT_S, check=False,
     )
-    return ROUTE_DEVICE.findall(result.stdout)
+    return WORKING_DEFAULT_ROUTE.findall(result.stdout)
 
 
 def online_without(wlan_iface: str) -> bool:
-    """The printer has a default route through an interface other than its Wi-Fi."""
-    return any(device != wlan_iface for device in _default_route_devices())
+    """The printer has an IPv4 or IPv6 default route through an interface other than its Wi-Fi."""
+    devices = _default_route_devices("-4") + _default_route_devices("-6")
+    return any(device != wlan_iface for device in devices)
 
 
 def every_network_disabled(live_config: Path) -> bool:
