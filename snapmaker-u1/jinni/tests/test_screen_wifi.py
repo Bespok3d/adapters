@@ -66,7 +66,7 @@ def _boot_with(
     _fake_tool(tmp_path, "killall", f'echo "$1" >> "{tmp_path / "ended"}"')
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(screen_wifi, "UPTIME_FILE", tmp_path / "uptime")
-    monkeypatch.setattr(screen_wifi, "GUI_LOG", tmp_path / "gui.log")
+    monkeypatch.setattr(screen_wifi, "SCREEN_LOG", tmp_path / "gui.log")
     monkeypatch.setattr(screen_wifi, "RESTARTED_MARK", tmp_path / "restarted")
     monkeypatch.setattr(screen_wifi, "wlan_has_ip", lambda: has_ip)
     return tmp_path / "ended"

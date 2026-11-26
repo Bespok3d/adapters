@@ -3,16 +3,12 @@
 from pathlib import Path
 
 import pytest
-import wifi_forget
+import screen_log
+from screen_log_lines import FORGET_LINE
 from wifi_forget import ForgetWatch
 
 HOME_NETWORK = 'network={\n\tssid="home"\n}\n'
 NO_NETWORK = "ctrl_interface=/var/run/wpa_supplicant\n"
-# As the screen app logs them on a U1, firmware 2.1.2.
-FORGET_LINE = (
-    "2026-11-23 09:25:13.793 (: 596) <Module RK Wifi> {module_rk_forget_remembered_wifi}"
-    " Forget Remembered Wifi ret:0 ssid:home key_type:1\n"
-)
 FAILED_FORGET_LINE = FORGET_LINE.replace("ret:0", "ret:-1")
 OTHER_LINE = (
     "2026-11-23 09:25:14.257 (: 102) <Controller Klipper> {timer_1s_proc} run time:36380s\n"
@@ -33,8 +29,8 @@ class Printer:
         self.live_config.write_text(config)
 
     def logs(self, screen_line: str) -> None:
-        with self.screen_log.open("a") as screen_log:
-            screen_log.write(screen_line)
+        with self.screen_log.open("a") as log_file:
+            log_file.write(screen_line)
 
     def round(self) -> bool:
         self.watch.follow(self.live_config)
@@ -139,7 +135,7 @@ def test_no_screen_log_means_no_forget(printer: Printer) -> None:
 def test_a_long_log_is_read_only_at_its_end(
     monkeypatch: pytest.MonkeyPatch, printer: Printer,
 ) -> None:
-    monkeypatch.setattr(wifi_forget, "LOG_READ_LIMIT_BYTES", len(FORGET_LINE))
+    monkeypatch.setattr(screen_log, "LOG_READ_LIMIT_BYTES", len(FORGET_LINE))
     printer.holds(HOME_NETWORK)
     printer.round()
     printer.holds(NO_NETWORK)

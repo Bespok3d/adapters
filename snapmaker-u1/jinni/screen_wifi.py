@@ -10,7 +10,6 @@ an IP, nothing prints and lmd runs, this check ends the screen app.
 """
 import asyncio
 import logging
-import os
 import re
 import subprocess
 import time
@@ -18,17 +17,15 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from screen_log import SCREEN_LOG, read_screen_log
 from wifi_watchdog import wlan_has_ip
 
-GUI_LOG = Path("/home/lava/printer_data/logs/gui.log")
 UPTIME_FILE = Path("/proc/uptime")
 # /run is emptied at every boot, so this file keeps the restart to once per boot, even when the
 # jinni itself restarts.
 RESTARTED_MARK = Path("/run/bespok3d-screen-wifi-restarted")
 SCREEN_APP = "gui"
 SCREEN_SUPERVISOR = "lmd"
-# The open's own line is ~30 KB after the screen app's start banner, so the log's last MiB holds it.
-LOG_TAIL_BYTES = 1024 * 1024
 # A power cut can leave NUL bytes in the log ahead of the next boot's first line.
 OPEN_RESULT = re.compile(
     rb"^\x00*(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) .*\{rk_wifi_handler\} Open wifi .* ret:(-?\d+)",
@@ -55,13 +52,9 @@ def _uptime() -> float:
 
 
 def _gui_log_tail() -> bytes:
-    # No log yet means the screen app has not opened Wi-Fi yet. The size comes from the open file,
-    # so a log rotated meanwhile cannot mix two files.
+    # No log yet means the screen app has not opened Wi-Fi yet.
     try:
-        with GUI_LOG.open("rb") as gui_log:
-            log_size = gui_log.seek(0, os.SEEK_END)
-            gui_log.seek(max(0, log_size - LOG_TAIL_BYTES))
-            return gui_log.read()
+        return read_screen_log(SCREEN_LOG).log_text
     except FileNotFoundError:
         return b""
 

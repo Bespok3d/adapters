@@ -14,7 +14,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from wifi_forget import FORGOTTEN_MARK, SCREEN_LOG, ForgetWatch
+from wifi_forget import FORGET_WATCH
 from wifi_heal_policy import wifi_heal_wanted
 from wifi_persistence import keep_live_wifi, restore_live_network
 
@@ -22,7 +22,6 @@ WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
 WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
 WIFI_PERSISTENT_CONFIG = Path("/userdata/cfg/wpa_config.conf")
 WLAN_IFACE = "wlan0"
-FORGET_WATCH = ForgetWatch(SCREEN_LOG, FORGOTTEN_MARK)
 WATCHDOG_INTERVAL_S = 30
 IP_TIMEOUT_S = 10
 IFUPDOWN_TIMEOUT_S = 60

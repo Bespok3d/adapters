@@ -11,6 +11,7 @@ import wifi_heal_policy
 import wifi_persistence
 import wifi_watchdog
 from default_routes import WIRED_IPV6_ROUTE, WIRED_ROUTE, print_default_routes
+from screen_log_lines import FORGET_LINE
 from wifi_forget import ForgetWatch
 
 SCREEN_NETWORK = 'network={ ssid="old-lan" }'
@@ -593,9 +594,6 @@ def test_does_not_restore_or_restart_a_forgotten_network(
     screen_log.write_text("")
     wifi_watchdog._check_and_heal()
     live_config.write_text("ctrl_interface=/var/run/wpa_supplicant\n")
-    screen_log.write_text(
-        "2026-11-23 09:25:13.793 (: 596) <Module RK Wifi> {module_rk_forget_remembered_wifi}"
-        " Forget Remembered Wifi ret:0 ssid:home key_type:1\n",
-    )
+    screen_log.write_text(FORGET_LINE)
     wifi_watchdog._check_and_heal()
     assert healed == ["heal"]

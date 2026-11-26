@@ -19,13 +19,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from screen_log import SCREEN_LOG, read_screen_log
 from wifi_persistence import saved_network
 
-SCREEN_LOG = Path("/home/lava/printer_data/logs/gui.log")
 # Beside the kept Wi-Fi config it guards, where a firmware update does not reach either.
 FORGOTTEN_MARK = Path("/userdata/cfg/bespok3d-wifi-forgotten")
-# The screen's log grows by a few KB a minute, so a round never has more than this to read.
-LOG_READ_LIMIT_BYTES = 1024 * 1024
 # The screen app's own line on firmware 2.1.0 and 2.1.2, as logged on a U1:
 # "... {module_rk_forget_remembered_wifi} Forget Remembered Wifi ret:0 ssid:<name> key_type:1"
 FORGET_LOGGED = re.compile(rb"\{module_rk_forget_remembered_wifi\} Forget Remembered Wifi ret:0\b")
@@ -59,15 +57,10 @@ def _unread_start(last_read: LogPosition, log_end: LogPosition) -> int:
 
 def _read_whole_lines(screen_log: Path, unread_start: int) -> tuple[bytes, LogPosition]:
     """The whole lines logged from unread_start on, and the position right after them."""
-    with screen_log.open("rb") as log_file:
-        log_size = log_file.seek(0, os.SEEK_END)
-        read_start = max(unread_start, log_size - LOG_READ_LIMIT_BYTES)
-        log_file.seek(read_start)
-        unread = log_file.read()
-        log_inode = os.fstat(log_file.fileno()).st_ino
+    log_read = read_screen_log(screen_log, unread_start)
     # A line still being written is left for the next round, so a forget is never cut in two.
-    whole_lines = unread[: unread.rfind(LINE_END) + 1]
-    return whole_lines, LogPosition(log_inode, read_start + len(whole_lines))
+    whole_lines = log_read.log_text[: log_read.log_text.rfind(LINE_END) + 1]
+    return whole_lines, LogPosition(log_read.log_inode, log_read.read_start + len(whole_lines))
 
 
 class ForgetWatch:
@@ -100,3 +93,6 @@ class ForgetWatch:
     def network_forgotten(self, live_config: Path) -> bool:
         """The owner forgot the network on the screen, so nothing may bring it back."""
         return self._forgotten_mark.exists() and not saved_network(live_config)
+
+
+FORGET_WATCH = ForgetWatch(SCREEN_LOG, FORGOTTEN_MARK)

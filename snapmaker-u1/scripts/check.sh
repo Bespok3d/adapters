@@ -34,7 +34,7 @@ run_check "ruff (jinni)"   ruff_in_dir "$REPO_ROOT" jinni
 # checker resolves both from their own repos, as the runtime does.
 export MYPYPATH="$DAEMON_DIR:$KLIPPER_JINNI_DIR"
 run_check "mypy (jinni)"   mypy_in_dir "$REPO_ROOT" \
-    jinni/bespok3d_jinni.py jinni/device_health.py jinni/service_scripts.py jinni/wifi_watchdog.py jinni/wifi_heal_policy.py jinni/wifi_forget.py jinni/wifi_persistence.py jinni/screen_wifi.py
+    jinni/bespok3d_jinni.py jinni/device_health.py jinni/service_scripts.py jinni/wifi_watchdog.py jinni/wifi_heal_policy.py jinni/wifi_forget.py jinni/wifi_persistence.py jinni/screen_wifi.py jinni/screen_log.py
 unset MYPYPATH
 run_check "pytest (jinni)" pytest_in_dir "$REPO_ROOT" jinni/tests
 
