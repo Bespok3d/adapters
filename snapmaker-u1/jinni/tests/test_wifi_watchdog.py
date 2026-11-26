@@ -11,6 +11,7 @@ import wifi_heal_policy
 import wifi_persistence
 import wifi_watchdog
 from default_routes import WIRED_IPV6_ROUTE, WIRED_ROUTE, print_default_routes
+from wifi_forget import ForgetWatch
 
 SCREEN_NETWORK = 'network={ ssid="old-lan" }'
 KEPT_NETWORK = 'network={ ssid="home" }'
@@ -22,6 +23,13 @@ def _no_real_wifi_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
     monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_SRC", tmp_path / "unused-screen.conf")
     monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", tmp_path / "unused-live.conf")
     monkeypatch.setattr(wifi_watchdog, "WIFI_PERSISTENT_CONFIG", tmp_path / "unused-kept.conf")
+
+
+# The forget watch reads the screen's log and marks in /userdata, so each test gets its own.
+@pytest.fixture(autouse=True)
+def _no_real_forget_watch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    forget_watch = ForgetWatch(tmp_path / "unused-gui.log", tmp_path / "unused-forgotten")
+    monkeypatch.setattr(wifi_watchdog, "FORGET_WATCH", forget_watch)
 
 
 # Whether a heal is wanted reads this machine's own routes, so the tests below decide it themselves;
@@ -566,3 +574,28 @@ def test_heals_the_paths_enrollment_links(monkeypatch: pytest.MonkeyPatch) -> No
     assert f"WIFI_LIVE_CONFIG = '{wifi_watchdog.WIFI_CRED_DST}'" in client_paths
     assert f"WIFI_PERSISTENT_CONFIG = '{wifi_watchdog.WIFI_PERSISTENT_CONFIG}'" in client_paths
     assert f"WIFI_SCREEN_COPY = '{wifi_watchdog.WIFI_CRED_SRC}'" in client_paths
+
+
+# The forget bug: a network the owner forgot on the screen was put back and wlan0 restarted every
+# 30 seconds. Neither happens once the screen has logged the forget.
+def test_does_not_restore_or_restart_a_forgotten_network(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    healed: list[str] = []
+    live_config = tmp_path / "live.conf"
+    screen_log = tmp_path / "gui.log"
+    monkeypatch.setattr(wifi_watchdog, "WIFI_CRED_DST", live_config)
+    monkeypatch.setattr(wifi_watchdog, "FORGET_WATCH", ForgetWatch(screen_log, tmp_path / "mark"))
+    monkeypatch.setattr(wifi_watchdog, "_restore_wifi", lambda: healed.append("heal"))
+    monkeypatch.setattr(wifi_watchdog, "_wlan_exists", lambda: True)
+    monkeypatch.setattr(wifi_watchdog, "wlan_has_ip", lambda: False)
+    live_config.write_text(KEPT_NETWORK)
+    screen_log.write_text("")
+    wifi_watchdog._check_and_heal()
+    live_config.write_text("ctrl_interface=/var/run/wpa_supplicant\n")
+    screen_log.write_text(
+        "2026-11-23 09:25:13.793 (: 596) <Module RK Wifi> {module_rk_forget_remembered_wifi}"
+        " Forget Remembered Wifi ret:0 ssid:home key_type:1\n",
+    )
+    wifi_watchdog._check_and_heal()
+    assert healed == ["heal"]

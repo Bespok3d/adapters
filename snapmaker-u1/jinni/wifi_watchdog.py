@@ -4,7 +4,7 @@
 
 A background loop that keeps the live Wi-Fi config linked to its copy in /userdata, and restores the
 stock wifi credentials and bounces wlan0 whenever the interface is present but has lost its IP,
-unless the printer is online another way or every saved network is switched off. This
+unless the printer is online another way, or every saved network is switched off or forgotten. This
 is a device-realm resilience task the jinni runs in the background, NOT part of the jinni contract
 surface, so it lives on its own next to the jinni class.
 """
@@ -14,6 +14,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from wifi_forget import FORGOTTEN_MARK, SCREEN_LOG, ForgetWatch
 from wifi_heal_policy import wifi_heal_wanted
 from wifi_persistence import keep_live_wifi, restore_live_network
 
@@ -21,6 +22,7 @@ WIFI_CRED_SRC = Path("/oem/printer_data/gui/wpa_supplicant.conf")
 WIFI_CRED_DST = Path("/etc/wpa_supplicant.conf")
 WIFI_PERSISTENT_CONFIG = Path("/userdata/cfg/wpa_config.conf")
 WLAN_IFACE = "wlan0"
+FORGET_WATCH = ForgetWatch(SCREEN_LOG, FORGOTTEN_MARK)
 WATCHDOG_INTERVAL_S = 30
 IP_TIMEOUT_S = 10
 IFUPDOWN_TIMEOUT_S = 60
@@ -78,6 +80,10 @@ def _keep_wifi() -> None:
 
 
 def _check_and_heal() -> None:
+    # In the same round as the decision, so no restore can land between a forget and its mark.
+    FORGET_WATCH.follow(WIFI_CRED_DST)
+    if FORGET_WATCH.network_forgotten(WIFI_CRED_DST):
+        return
     if _wlan_exists() and not wlan_has_ip() and wifi_heal_wanted(WLAN_IFACE, WIFI_CRED_DST):
         _restore_wifi()
 
